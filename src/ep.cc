@@ -32,6 +32,7 @@
 #include "access_scanner.h"
 #include "checkpoint_remover.h"
 #include "conflict_resolution.h"
+#include "defragmenter.h"
 #include "ep.h"
 #include "ep_engine.h"
 #include "failover-table.h"
@@ -337,6 +338,10 @@ bool EventuallyPersistentStore::initialize() {
 
     ExTask workloadMonitorTask = new WorkLoadMonitor(&engine, false);
     ExecutorPool::get()->schedule(workloadMonitorTask, NONIO_TASK_IDX);
+
+    defragmenterTask = new DefragmenterTask(&engine, stats,
+                                            config.getDefragmenterInterval());
+    ExecutorPool::get()->schedule(defragmenterTask, NONIO_TASK_IDX);
 
     return true;
 }

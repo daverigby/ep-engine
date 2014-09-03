@@ -815,6 +815,7 @@ private:
     VBucketMap                      vbMap;
     ExTask                          itmpTask;
     ExTask                          chkTask;
+    ExTask                          defragmenterTask;
 
     /* Array of mutexes for each vbucket
      * Used by flush operations: flushVB, deleteVB, compactVB, snapshotVB */

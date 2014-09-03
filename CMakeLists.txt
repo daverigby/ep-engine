@@ -117,6 +117,7 @@ ADD_LIBRARY(ep SHARED
             src/access_scanner.cc src/atomic.cc src/backfill.cc
             src/bgfetcher.cc src/checkpoint.cc
             src/checkpoint_remover.cc src/conflict_resolution.cc
+            src/defragmenter.cc
             src/ep.cc src/ep_engine.cc src/ep_time.c
             src/executorpool.cc src/failover-table.cc
             src/flusher.cc src/htresizer.cc
