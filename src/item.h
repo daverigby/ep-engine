@@ -201,6 +201,21 @@ public:
     }
 
     /**
+     * Returns how old this Blob is (how many epochs have passed since it was
+     * created). Note this wraps if the blob is older than 255 epochs.
+     */
+    uint8_t getAge() const {
+        return (uint8_t)currentEpoch - epoch;
+    }
+
+    /**
+     * Advance the current epoch forward.
+     */
+    static void advanceEpoch() {
+        currentEpoch++;
+    }
+
+    /**
      * Get a std::string representation of this blob.
      */
     const std::string to_s() const {
@@ -222,7 +237,8 @@ private:
     explicit Blob(const char *start, const size_t len, uint8_t* ext_meta,
                   uint8_t ext_len) :
         size(static_cast<uint32_t>(len + FLEX_DATA_OFFSET + ext_len)),
-        extMetaLen(static_cast<uint8_t>(ext_len))
+        extMetaLen(static_cast<uint8_t>(ext_len)),
+        epoch(Blob::currentEpoch)
     {
         *(data) = FLEX_META_CODE;
         std::memcpy(data + FLEX_DATA_OFFSET, ext_meta, ext_len);
@@ -232,7 +248,8 @@ private:
 
     explicit Blob(const size_t len, uint8_t* ext_meta, uint8_t ext_len) :
         size(static_cast<uint32_t>(len + FLEX_DATA_OFFSET + ext_len)),
-        extMetaLen(static_cast<uint8_t>(ext_len))
+        extMetaLen(static_cast<uint8_t>(ext_len)),
+        epoch(Blob::currentEpoch)
     {
         *(data) = FLEX_META_CODE;
         std::memcpy(data + FLEX_DATA_OFFSET, ext_meta, ext_len);;
@@ -244,7 +261,8 @@ private:
 
     explicit Blob(const size_t len, uint8_t ext_len) :
         size(static_cast<uint32_t>(len + FLEX_DATA_OFFSET + ext_len)),
-        extMetaLen(static_cast<uint8_t>(ext_len))
+        extMetaLen(static_cast<uint8_t>(ext_len)),
+        epoch(Blob::currentEpoch)
     {
 #ifdef VALGRIND
         memset(data, 0, len);
@@ -254,7 +272,9 @@ private:
 
     explicit Blob(const Blob& other)
       : size(other.size),
-        extMetaLen(other.extMetaLen)
+        extMetaLen(other.extMetaLen),
+        // While this is a copy, it is a new allocation therefore reset epoch.
+        epoch(Blob::currentEpoch)
     {
         std::memcpy(data, other.data, size);
         ObjectRegistry::onCreateBlob(this);
@@ -262,7 +282,17 @@ private:
 
     const uint32_t size;
     const uint8_t extMetaLen;
+
+    // The epoch number of when this Blob was allocated.
+    const int8_t epoch;
     char data[1];
+
+    // The current epoch number. Used by defragmentation (in conjunction with
+    // each objects creation epoch) to determine how long a Blob has been in
+    // existence for.
+    // Note: stored as an 8bit quantity, so can only measure document age up
+    // to 255.
+    static int8_t currentEpoch;
 
     DISALLOW_ASSIGN(Blob);
 };

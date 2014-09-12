@@ -462,6 +462,14 @@ public:
      */
     static void setMutationMemoryThreshold(double memThreshold);
 
+    /**
+     * Returns how old the value is (how many epochs have passed since it was
+     * created).
+     */
+    uint8_t getValueAge() const {
+        return value->getAge();
+    }
+
     /*
      * Values of the bySeqno attribute used by temporarily created StoredValue
      * objects.

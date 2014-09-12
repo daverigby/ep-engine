@@ -459,3 +459,5 @@ ENGINE_ERROR_CODE Item::prepend(const Item &i, size_t maxItemSize) {
             value->getDataType(), i.getDataType());
     return ENGINE_FAILED;
 }
+
+int8_t Blob::currentEpoch = 0;
