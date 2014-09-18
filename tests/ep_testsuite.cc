@@ -11769,7 +11769,8 @@ engine_test_t* get_tests(void) {
         TestCase("test defragmenter", test_defragmenter,
                  test_setup, teardown,
                  "defragmenter_interval=9999"
-                 ";defragmenter_age_threshold=0",
+                 ";defragmenter_age_threshold=0"
+                 ";defragmenter_chunk_duration=99999",
                  prepare, cleanup),
 
         TestCase(NULL, NULL, NULL, NULL, NULL, prepare, cleanup)

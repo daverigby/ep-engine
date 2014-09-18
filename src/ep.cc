@@ -341,7 +341,8 @@ bool EventuallyPersistentStore::initialize() {
 
     defragmenterTask = new DefragmenterTask
             (&engine, stats, config.getDefragmenterInterval(),
-             config.getDefragmenterAgeThreshold());
+             config.getDefragmenterAgeThreshold(),
+             config.getDefragmenterChunkDuration());
     ExecutorPool::get()->schedule(defragmenterTask, NONIO_TASK_IDX);
 
     return true;
