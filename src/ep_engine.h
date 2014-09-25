@@ -712,6 +712,12 @@ public:
 
     void addLookupAllKeys(const void *cookie, ENGINE_ERROR_CODE err);
 
+    /*
+     * Explicitly trigger the defragmenter task. Provided to facilitate
+     * testing.
+     */
+    void run_defragmenter_task(void);
+
 protected:
     friend class EpEngineValueChangeListener;
 

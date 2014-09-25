@@ -707,6 +707,10 @@ public:
         }
     }
 
+    void run_defragmenter_task() {
+        defragmenterTask->run();
+    }
+
 protected:
     // During the warmup phase we might want to enable external traffic
     // at a given point in time.. The LoadStorageKvPairCallback will be

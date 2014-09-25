@@ -508,6 +508,8 @@ extern "C" {
                 validate(v, 0, std::numeric_limits<int>::max());
                 e->getConfiguration().setMaxNumNonio(v);
                 ExecutorPool::get()->setMaxNonIO(v);
+            } else if (strcmp(keyz, "defragmenter_run") == 0) {
+                e->run_defragmenter_task();
             } else {
                 *msg = "Unknown config param";
                 rv = PROTOCOL_BINARY_RESPONSE_KEY_ENOENT;
@@ -4315,6 +4317,10 @@ void EventuallyPersistentEngine::addLookupAllKeys(const void *cookie,
                                                   ENGINE_ERROR_CODE err) {
     LockHolder lh(lookupMutex);
     allKeysLookups[cookie] = err;
+}
+
+void EventuallyPersistentEngine::run_defragmenter_task(void) {
+    epstore->run_defragmenter_task();
 }
 
 ENGINE_ERROR_CODE EventuallyPersistentEngine::getStats(const void* cookie,
