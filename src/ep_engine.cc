@@ -508,6 +508,12 @@ extern "C" {
                 validate(v, 0, std::numeric_limits<int>::max());
                 e->getConfiguration().setMaxNumNonio(v);
                 ExecutorPool::get()->setMaxNonIO(v);
+            } else if (strcmp(keyz, "defragmenter_enabled") == 0) {
+                if (strcmp(valz, "true") == 0) {
+                    e->getConfiguration().setDefragmenterEnabled(true);
+                } else {
+                    e->getConfiguration().setDefragmenterEnabled(false);
+                }
             } else if (strcmp(keyz, "defragmenter_run") == 0) {
                 e->run_defragmenter_task();
             } else {

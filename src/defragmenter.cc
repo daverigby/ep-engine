@@ -91,82 +91,83 @@ DefragmenterTask::DefragmenterTask(EventuallyPersistentEngine* e,
 }
 
 bool DefragmenterTask::run(void) {
+    if (engine->getConfiguration().isDefragmenterEnabled()) {
+        // Get our visitor. If we didn't finish the previous pass,
+        // then resume from where we last were, otherwise create a new visitor and
+        // reset the position.
+        if (visitor == NULL) {
+            visitor = new DefragmentVisitor(age_threshold);
+            epstore_position = engine->getEpStore()->startPosition();
+        }
 
-    // Get our visitor. If we didn't finish the previous pass,
-    // then resume from where we last were, otherwise create a new visitor and
-    // reset the position.
-    if (visitor == NULL) {
-        visitor = new DefragmentVisitor(age_threshold);
-        epstore_position = engine->getEpStore()->startPosition();
-    }
+        // Print start status.
+        std::stringstream ss;
+        ss << getDescription() << " for bucket '" << engine->getName() << "'";
+        if (epstore_position == engine->getEpStore()->startPosition()) {
+            ss << " starting. ";
+        } else {
+            ss << " resuming from " << epstore_position << ", ";
+            ss << visitor->get_hashtable_position() << ".";
+        }
+        ss << " Using chunk_duration=" << chunk_duration_ms << " ms."
+           << " mem_used=" << stats.getTotalMemoryUsed()
+           << ", mapped_bytes=" << get_mapped_bytes();
+        LOG(EXTENSION_LOG_WARNING, ss.str().c_str());
 
-    // Print start status.
-    std::stringstream ss;
-    ss << getDescription() << " for bucket '" << engine->getName() << "'";
-    if (epstore_position == engine->getEpStore()->startPosition()) {
-        ss << " starting. ";
-    } else {
-        ss << " resuming from " << epstore_position << ", ";
-        ss << visitor->get_hashtable_position() << ".";
-    }
-    ss << " Using chunk_duration=" << chunk_duration_ms << " ms."
-       << " mem_used=" << stats.getTotalMemoryUsed()
-       << ", mapped_bytes=" << get_mapped_bytes();
-    LOG(EXTENSION_LOG_INFO, ss.str().c_str());
+        // Disable thread-caching (as we are about to defragment, and hence don't
+        // want any of the new Blobs in tcache).
+        ALLOCATOR_HOOKS_API* alloc_hooks = engine->getServerApi()->alloc_hooks;
+        bool old_tcache = alloc_hooks->enable_thread_cache(false);
 
-    // Disable thread-caching (as we are about to defragment, and hence don't
-    // want any of the new Blobs in tcache).
-    ALLOCATOR_HOOKS_API* alloc_hooks = engine->getServerApi()->alloc_hooks;
-    bool old_tcache = alloc_hooks->enable_thread_cache(false);
+        // Prepare the visitor.
+        hrtime_t start = gethrtime();
+        hrtime_t deadline = start + (chunk_duration_ms * 1000 * 1000);
+        visitor->set_deadline(deadline);
+        visitor->clear_stats();
 
-    // Prepare the visitor.
-    hrtime_t start = gethrtime();
-    hrtime_t deadline = start + (chunk_duration_ms * 1000 * 1000);
-    visitor->set_deadline(deadline);
-    visitor->clear_stats();
+        // Do it - set off the visitor.
+        epstore_position = engine->getEpStore()->pauseResumeVisit(*visitor,
+                                                                  epstore_position);
+        hrtime_t end = gethrtime();
 
-    // Do it - set off the visitor.
-    epstore_position = engine->getEpStore()->pauseResumeVisit(*visitor,
-                                                              epstore_position);
-    hrtime_t end = gethrtime();
+        // Defrag complete. Restore thread caching.
+        alloc_hooks->enable_thread_cache(old_tcache);
 
-    // Defrag complete. Restore thread caching.
-    alloc_hooks->enable_thread_cache(old_tcache);
+        // Time for a new epoch
+        Blob::advanceEpoch();
 
-    // Time for a new epoch
-    Blob::advanceEpoch();
+        // Update stats
+        stats.defragNumMoved.fetch_add(visitor->get_defrag_count());
 
-    // Update stats
-    stats.defragNumMoved.fetch_add(visitor->get_defrag_count());
+        // Release any free memory we now have in the allocator back to the OS.
+        // TODO: Benchmark this - is it necessary? How much of a slowdown does it
+        // add? How much memory does it return?
+        alloc_hooks->release_free_memory();
 
-    // Release any free memory we now have in the allocator back to the OS.
-    // TODO: Benchmark this - is it necessary? How much of a slowdown does it
-    // add? How much memory does it return?
-    alloc_hooks->release_free_memory();
+        // Check if the visitor completed a full pass.
+        bool completed = (epstore_position == engine->getEpStore()->endPosition());
 
-    // Check if the visitor completed a full pass.
-    bool completed = (epstore_position == engine->getEpStore()->endPosition());
+        // Print status.
+        ss.str("");
+        ss << getDescription() << " for bucket '" << engine->getName() << "'";
+        if (completed) {
+            ss << " finished.";
+        } else {
+            ss << " paused at position " << epstore_position << ".";
+        }
+        ss << " Took " << (end - start) / 1024 << " us."
+           << " moved " << visitor->get_defrag_count() << "/"
+           << visitor->get_visited_count() << " visited documents."
+           << " mem_used=" << stats.getTotalMemoryUsed()
+           << ", mapped_bytes=" << get_mapped_bytes()
+           << ". Sleeping for " << sleep_time << " seconds.";
+        LOG(EXTENSION_LOG_WARNING, ss.str().c_str());
 
-    // Print status.
-    ss.str("");
-    ss << getDescription() << " for bucket '" << engine->getName() << "'";
-    if (completed) {
-        ss << " finished.";
-    } else {
-        ss << " paused at position " << epstore_position << ".";
-    }
-    ss << " Took " << (end - start) / 1024 << " us."
-       << " moved " << visitor->get_defrag_count() << "/"
-       << visitor->get_visited_count() << " visited documents."
-       << " mem_used=" << stats.getTotalMemoryUsed()
-       << ", mapped_bytes=" << get_mapped_bytes()
-       << ". Sleeping for " << sleep_time << " seconds.";
-    LOG(EXTENSION_LOG_INFO, ss.str().c_str());
-
-    // Delete visitor if it finished.
-    if (completed) {
-        delete visitor;
-        visitor = NULL;
+        // Delete visitor if it finished.
+        if (completed) {
+            delete visitor;
+            visitor = NULL;
+        }
     }
 
     snooze(sleep_time);
