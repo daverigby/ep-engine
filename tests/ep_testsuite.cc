@@ -166,6 +166,17 @@ static void check_key_value(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1,
     check(memcmp(info.value[0].iov_base, val, vlen) == 0, "Data mismatch");
 }
 
+
+static void check_key_val_length(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1,
+                                 const char* key, size_t vlen,
+                                 uint16_t vbucket = 0) {
+    item_info info;
+    check(get_item_info(h, h1, &info, key, vbucket), "checking key and value");
+    check(info.nvalue == 1, "info.nvalue != 1");
+    check(vlen == info.value[0].iov_len, "Value length mismatch");
+    fprintf(stderr, "check_key_val_length() length=%u\n", info.value[0].iov_len);
+}
+
 static void check_observe_seqno(bool failover, uint8_t format_type, uint16_t vb_id,
                                 uint64_t vb_uuid, uint64_t last_persisted_seqno,
                                 uint64_t current_seqno, uint64_t failover_vbuuid = 0,
@@ -511,6 +522,7 @@ static enum test_result test_set(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
 struct handle_pair {
     ENGINE_HANDLE *h;
     ENGINE_HANDLE_V1 *h1;
+    void* context;
 };
 
 extern "C" {
@@ -535,6 +547,20 @@ extern "C" {
         }
     }
 
+    static void conc_append_thread(void *arg) {
+        struct handle_pair *hp = static_cast<handle_pair *>(arg);
+        const size_t iterations = reinterpret_cast<size_t>(hp->context);
+        item *it = NULL;
+
+        for (int i = 0; i < iterations; ++i) {
+            checkeq(ENGINE_SUCCESS,
+                    store(hp->h, hp->h1, NULL, OPERATION_APPEND, "key", "a",
+                          &it),
+                    "Failed to append concurrently");
+            hp->h1->release(hp->h, NULL, it);
+        }
+    }
+
     static void conc_incr_thread(void *arg) {
         struct handle_pair *hp = static_cast<handle_pair *>(arg);
         uint64_t result = 0;
@@ -554,7 +580,7 @@ static enum test_result test_conc_set(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
 
     const int n_threads = 8;
     cb_thread_t threads[n_threads];
-    struct handle_pair hp = {h, h1};
+    struct handle_pair hp = {h, h1, NULL};
 
     wait_for_persisted_value(h, h1, "key", "value1");
 
@@ -581,10 +607,40 @@ static enum test_result test_conc_set(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
     return SUCCESS;
 }
 
+/** Create a document, then concurrently append to it in multiple threads.
+ *  After all appends, document length should be:
+ *  (initial_length + nthreads * iterations) - i.e. we can't guarantee the
+ *  order of the appends, but they should all occur.
+ */
+static enum test_result test_conc_append(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
+
+    const int n_threads = 8;
+    const int n_iterations = 10000;
+    cb_thread_t threads[n_threads];
+    struct handle_pair hp = {h, h1, reinterpret_cast<void*>(n_iterations)};
+
+    wait_for_persisted_value(h, h1, "key", "initial_");
+
+    for (int i = 0; i < n_threads; i++) {
+        int r = cb_create_thread(&threads[i], conc_append_thread, &hp, 0);
+        cb_assert(r == 0);
+    }
+
+    for (int i = 0; i < n_threads; i++) {
+        int r = cb_join_thread(threads[i]);
+        cb_assert(r == 0);
+    }
+
+    const int expected_length = strlen("initial_") + (n_threads * n_iterations);
+    check_key_val_length(h, h1, "key", expected_length);
+
+    return SUCCESS;
+}
+
 static enum test_result test_conc_incr(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
     const int n_threads = 10;
     cb_thread_t threads[n_threads];
-    struct handle_pair hp = {h, h1};
+    struct handle_pair hp = {h, h1, NULL};
     item *i = NULL;
     check(store(h, h1, NULL, OPERATION_SET, "key", "0", &i) == ENGINE_SUCCESS,
           "store failure");
@@ -12535,6 +12591,9 @@ MEMCACHED_PUBLIC_API
 engine_test_t* get_tests(void) {
 
     TestCase tc[] = {
+        TestCase("concurrent append", test_conc_append, test_setup,
+                 teardown, NULL, prepare, cleanup),
+
         TestCase("validate engine handle", test_validate_engine_handle,
                  NULL, teardown, NULL, prepare, cleanup),
 
