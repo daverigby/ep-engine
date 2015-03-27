@@ -46,8 +46,8 @@ private:
 
 // DegragmentVisitor implementation ///////////////////////////////////////////
 
-DefragmentVisitor::DefragmentVisitor(uint8_t age_threshold_)
-  : max_size_class(3584),  // TODO: Derive from allocator hooks.
+DefragmentVisitor::DefragmentVisitor(uint8_t age_threshold_, size_t max_doc_size)
+  : max_size_class(max_doc_size),
     age_threshold(age_threshold_),
     progressTracker(NULL),
     resume_vbucket_id(0),

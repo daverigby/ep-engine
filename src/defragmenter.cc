@@ -35,7 +35,7 @@ bool DefragmenterTask::run(void) {
         // then resume from where we last were, otherwise create a new visitor and
         // reset the position.
         if (visitor == NULL) {
-            visitor = new DefragmentVisitor(getAgeThreshold());
+            visitor = new DefragmentVisitor(getAgeThreshold(), getMaxDocSize());
             epstore_position = engine->getEpStore()->startPosition();
         }
 
@@ -140,6 +140,10 @@ size_t DefragmenterTask::getAgeThreshold() const {
 
 size_t DefragmenterTask::getChunkDurationMS() const {
     return engine->getConfiguration().getDefragmenterChunkDuration();
+}
+
+size_t DefragmenterTask::getMaxDocSize() const {
+    return engine->getConfiguration().getDefragmenterMaxDocSize();
 }
 
 size_t DefragmenterTask::getMappedBytes() {

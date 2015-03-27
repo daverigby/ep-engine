@@ -548,6 +548,10 @@ extern "C" {
                 checkNumeric(valz);
                 validate(v, 1, std::numeric_limits<int>::max());
                 e->getConfiguration().setDefragmenterChunkDuration(v);
+            } else if (strcmp(keyz, "defragmenter_max_doc_size") == 0) {
+                checkNumeric(valz);
+                validate(v, 1, std::numeric_limits<int>::max());
+                e->getConfiguration().setDefragmenterMaxDocSize(v);
             } else if (strcmp(keyz, "defragmenter_run") == 0) {
                 e->runDefragmenterTask();
             } else if (strcmp(keyz, "compaction_write_queue_cap") == 0) {

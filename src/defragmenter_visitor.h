@@ -28,7 +28,7 @@ class ProgressTracker;
 class DefragmentVisitor : public PauseResumeEPStoreVisitor,
                           public PauseResumeHashTableVisitor {
 public:
-    DefragmentVisitor(uint8_t age_threshold_);
+    DefragmentVisitor(uint8_t age_threshold_, size_t max_doc_size);
 
     ~DefragmentVisitor();
 

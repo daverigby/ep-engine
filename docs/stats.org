@@ -322,6 +322,12 @@ For introductory information on stats within membase, start with the
 | ep_defragmenter_num_visited        | Number of items visited (considered    |
 |                                    | for defragmentation) by the            |
 |                                    | defragmenter task.                     |
+| ep_defragmenter_num_skipped_too_small | Number of items visited by the      |
+|                                    | defragmenter task but skipped due to   |
+|                                    | being too small.                       |
+| ep_defragmenter_num_skipped_too_large | Number of items visited by the      |
+|                                    | defragmenter task but skipped due to   |
+|                                    | being too large.                       |
 
 
 ** vBucket total stats

@@ -81,7 +81,8 @@ static size_t benchmarkDefragment(VBucket& vbucket, size_t passes,
                                   size_t chunk_duration_ms) {
     // Create and run visitor for the specified number of iterations, with
     // the given age.
-    DefragmentVisitor visitor(age_threshold);
+    const size_t max_doc_size = 1024; // Enough to cover the 256 byte test values.
+    DefragmentVisitor visitor(age_threshold, max_doc_size);
     hrtime_t start = gethrtime();
     for (size_t i = 0; i < passes; i++) {
         // Loop until we get to the end; this may take multiple chunks depending

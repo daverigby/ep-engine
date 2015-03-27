@@ -121,6 +121,10 @@ private:
     // can run for, before being paused.
     size_t getChunkDurationMS() const;
 
+    // Maximum size (in bytes) a document can be to be considered for
+    // defragmentation.
+    size_t getMaxDocSize() const;
+
     /// Return the current number of mapped bytes from the allocator.
     size_t getMappedBytes();
 
