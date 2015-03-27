@@ -73,8 +73,14 @@ bool DefragmenterTask::run(void) {
         alloc_hooks->enable_thread_cache(old_tcache);
 
         // Update stats
-        stats.defragNumMoved.fetch_add(visitor->getDefragCount());
-        stats.defragNumVisited.fetch_add(visitor->getVisitedCount());
+        stats.defragNumMoved.fetch_add(visitor->getDefragCount(),
+                                       std::memory_order_relaxed);
+        stats.defragNumVisited.fetch_add(visitor->getVisitedCount(),
+                                         std::memory_order_relaxed);
+        stats.defragNumSkippedTooSmall.fetch_add(visitor->getSkippedTooSmallCount(),
+                                                 std::memory_order_relaxed);
+        stats.defragNumSkippedTooLarge.fetch_add(visitor->getSkippedTooLargeCount(),
+                                                 std::memory_order_relaxed);
 
         // Release any free memory we now have in the allocator back to the OS.
         // TODO: Benchmark this - is it necessary? How much of a slowdown does it

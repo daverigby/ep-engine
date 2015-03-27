@@ -53,7 +53,9 @@ DefragmentVisitor::DefragmentVisitor(uint8_t age_threshold_)
     resume_vbucket_id(0),
     hashtable_position(),
     defrag_count(0),
-    visited_count(0) {
+    visited_count(0),
+    skipped_too_small(0),
+    skipped_too_large(0) {
     progressTracker = new ProgressTracker(*this);
 }
 
@@ -93,14 +95,20 @@ bool DefragmentVisitor::visit(StoredValue& v) {
     // and no larger than the biggest size class the allocator
     // supports, so it can be successfully reallocated to a run with other
     // objects of the same size.
-    if (value_len > 0 && value_len <= max_size_class) {
-        // If sufficiently old reallocate, otherwise increment it's age.
-        if (v.getValue()->getAge() >= age_threshold) {
-            v.reallocate();
-            defrag_count++;
+    if (value_len > 0) {
+        if (value_len <= max_size_class) {
+            // If sufficiently old reallocate, otherwise increment it's age.
+            if (v.getValue()->getAge() >= age_threshold) {
+                v.reallocate();
+                defrag_count++;
+            } else {
+                v.getValue()->incrementAge();
+            }
         } else {
-            v.getValue()->incrementAge();
+            skipped_too_large++;
         }
+    } else {
+        skipped_too_small++;
     }
     visited_count++;
 
@@ -116,6 +124,8 @@ HashTable::Position DefragmentVisitor::getHashtablePosition() const {
 void DefragmentVisitor::clearStats() {
     defrag_count = 0;
     visited_count = 0;
+    skipped_too_large = 0;
+    skipped_too_small = 0;
 }
 
 size_t DefragmentVisitor::getDefragCount() const {
@@ -124,6 +134,14 @@ size_t DefragmentVisitor::getDefragCount() const {
 
 size_t DefragmentVisitor::getVisitedCount() const {
     return visited_count;
+}
+
+size_t DefragmentVisitor::getSkippedTooSmallCount() const {
+    return skipped_too_small;
+}
+
+size_t DefragmentVisitor::getSkippedTooLargeCount() const {
+    return skipped_too_large;
 }
 
 /* ProgressTracker implementation ********************************************/

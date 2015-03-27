@@ -146,6 +146,8 @@ public:
         rollbackCount(0),
         defragNumVisited(0),
         defragNumMoved(0),
+        defragNumSkippedTooSmall(0),
+        defragNumSkippedTooLarge(0),
         dirtyAgeHisto(GrowingWidthGenerator<hrtime_t>(0, ONE_SECOND, 1.4), 25),
         diskCommitHisto(GrowingWidthGenerator<hrtime_t>(0, ONE_SECOND, 1.4), 25),
         mlogCompactorHisto(GrowingWidthGenerator<hrtime_t>(0, ONE_SECOND, 1.4), 25),
@@ -445,6 +447,16 @@ public:
      */
     AtomicValue<size_t> defragNumMoved;
 
+    /** The number of items that have been visited by the defragmenter task
+     * but were skipped due to being too small (i.e. deleted).
+     */
+    AtomicValue<size_t> defragNumSkippedTooSmall;
+
+    /** The number of items that have been visited by the defragmenter task
+     * but were skipped due to being too large.
+     */
+    AtomicValue<size_t> defragNumSkippedTooLarge;
+
     //! Histogram of queue processing dirty age.
     Histogram<hrtime_t> dirtyAgeHisto;
 
@@ -564,6 +576,8 @@ public:
         alogRuns.store(0);
         defragNumVisited.store(0),
         defragNumMoved.store(0);
+        defragNumSkippedTooSmall.store(0);
+        defragNumSkippedTooLarge.store(0);
 
         pendingOpsHisto.reset();
         bgWaitHisto.reset();

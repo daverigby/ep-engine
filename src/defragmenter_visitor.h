@@ -53,6 +53,14 @@ public:
     // Returns the number of documents that have been visited.
     size_t getVisitedCount() const;
 
+    // Returns the number of documents that have been visited but not considered
+    // for defrag due to being too small (i.e. deleted).
+    size_t getSkippedTooSmallCount() const;
+
+    // Returns the number of documents that have been visited but not considered
+    // for defrag due to being too large.
+    size_t getSkippedTooLargeCount() const;
+
 private:
     /* Configuration parameters */
 
@@ -78,6 +86,12 @@ private:
     size_t defrag_count;
     // How many documents have been visited.
     size_t visited_count;
+    // Count of documents visited but not considered for defrag due to being
+    // too small (i.e. deleted).
+    size_t skipped_too_small;
+    // Count of documents visited but not considered for defrag due to being
+    // too large.
+    size_t skipped_too_large;
 };
 
 #endif /* DEFRAGMENTER_VISITOR_H_ */
