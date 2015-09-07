@@ -625,7 +625,7 @@ EventuallyPersistentStore::deleteExpiredItem(uint16_t vbid, std::string &key,
                 cb_assert(deleted);
             } else if (v->isExpired(startTime) && !v->isDeleted()) {
                 vb->ht.unlocked_softDelete(v, 0, getItemEvictionPolicy());
-                queueDirty(vb, v, &lh, NULL, false);
+                queueDirty(vb, *v, &lh, NULL, false);
             }
         } else {
             if (eviction_policy == FULL_EVICTION) {
@@ -642,7 +642,7 @@ EventuallyPersistentStore::deleteExpiredItem(uint16_t vbid, std::string &key,
                     v->setStoredValueState(StoredValue::state_deleted_key);
                     v->setRevSeqno(revSeqno);
                     vb->ht.unlocked_softDelete(v, 0, eviction_policy);
-                    queueDirty(vb, v, &lh, NULL, false);
+                    queueDirty(vb, *v, &lh, NULL, false);
                 }
             }
         }
@@ -677,7 +677,7 @@ StoredValue *EventuallyPersistentStore::fetchValidValue(RCPtr<VBucket> &vb,
             if (queueExpired) {
                 incExpirationStat(vb, EXP_BY_ACCESS);
                 vb->ht.unlocked_softDelete(v, 0, eviction_policy);
-                queueDirty(vb, v, NULL, NULL, false, true);
+                queueDirty(vb, *v, NULL, NULL, false, true);
             }
             return wantDeleted ? v : NULL;
         }
@@ -850,7 +850,7 @@ ENGINE_ERROR_CODE EventuallyPersistentStore::set(const Item &itm,
     case WAS_CLEAN:
         it.setCas(vb->nextHLCCas());
         v->setCas(it.getCas());
-        queueDirty(vb, v, &lh, &seqno);
+        queueDirty(vb, *v, &lh, &seqno);
         it.setBySeqno(seqno);
         break;
     case NEED_BG_FETCH:
@@ -932,7 +932,7 @@ ENGINE_ERROR_CODE EventuallyPersistentStore::add(const Item &itm,
     case ADD_UNDEL:
         it.setCas(vb->nextHLCCas());
         v->setCas(it.getCas());
-        queueDirty(vb, v, &lh, &seqno);
+        queueDirty(vb, *v, &lh, &seqno);
         it.setBySeqno(seqno);
         break;
     }
@@ -992,7 +992,7 @@ ENGINE_ERROR_CODE EventuallyPersistentStore::replace(const Item &itm,
             case WAS_CLEAN:
                 it.setCas(vb->nextHLCCas());
                 v->setCas(it.getCas());
-                queueDirty(vb, v, &lh, &seqno);
+                queueDirty(vb, *v, &lh, &seqno);
                 it.setBySeqno(seqno);
                 break;
             case NEED_BG_FETCH:
@@ -1076,7 +1076,7 @@ ENGINE_ERROR_CODE EventuallyPersistentStore::addTAPBackfillItem(
                                       emd->getConflictResMode()));
         }
         vb->setMaxCas(v->getCas());
-        queueDirty(vb, v, &lh, NULL,true, true, genBySeqno, false);
+        queueDirty(vb, *v, &lh, NULL,true, true, genBySeqno, false);
         break;
     case INVALID_VBUCKET:
         ret = ENGINE_NOT_MY_VBUCKET;
@@ -1762,7 +1762,7 @@ void EventuallyPersistentStore::completeBGFetch(const std::string &key,
                         // returns, the item may have been updated and queued
                         // Hence test the CAS value to be the same first.
                         // exptime mutated, schedule it into new checkpoint
-                        queueDirty(vb, v, &hlh, NULL);
+                        queueDirty(vb, *v, &hlh, NULL);
                     }
                 } else if (gcb.val.getStatus() == ENGINE_KEY_ENOENT) {
                     v->setStoredValueState(
@@ -1868,7 +1868,7 @@ void EventuallyPersistentStore::completeBGFetchMulti(uint16_t vbId,
                         // updated and queued
                         // Hence test the CAS value to be the same first.
                         // exptime mutated, schedule it into new checkpoint
-                        queueDirty(vb, v, &blh, NULL);
+                        queueDirty(vb, *v, &blh, NULL);
                     }
                 } else if (status == ENGINE_KEY_ENOENT) {
                     v->setStoredValueState(StoredValue::state_non_existent_key);
@@ -2232,7 +2232,7 @@ ENGINE_ERROR_CODE EventuallyPersistentStore::setWithMeta(
                                             emd->getConflictResMode()));
         }
         vb->setMaxCas(v->getCas());
-        queueDirty(vb, v, &lh, seqno, false, true, genBySeqno, false);
+        queueDirty(vb, *v, &lh, seqno, false, true, genBySeqno, false);
         break;
     case NOT_FOUND:
         ret = ENGINE_KEY_ENOENT;
@@ -2311,7 +2311,7 @@ GetValue EventuallyPersistentStore::getAndUpdateTtl(const std::string &key,
         if (exptime_mutated) {
             // persist the item in the underlying storage for
             // mutated exptime
-            queueDirty(vb, v, &lh, NULL);
+            queueDirty(vb, *v, &lh, NULL);
         }
         return rv;
     } else {
@@ -2765,12 +2765,12 @@ ENGINE_ERROR_CODE EventuallyPersistentStore::deleteItem(const std::string &key,
     case NOT_FOUND:
         ret = ENGINE_KEY_ENOENT;
         if (v) {
-            queueDirty(vb, v, &lh, NULL, tapBackfill);
+            queueDirty(vb, *v, &lh, NULL, tapBackfill);
         }
         break;
     case WAS_DIRTY:
     case WAS_CLEAN:
-        queueDirty(vb, v, &lh, &seqno, tapBackfill);
+        queueDirty(vb, *v, &lh, &seqno, tapBackfill);
         mutInfo->seqno = seqno;
         mutInfo->vbucket_uuid = vb->failovers->getLatestUUID();
         break;
@@ -2910,7 +2910,7 @@ ENGINE_ERROR_CODE EventuallyPersistentStore::deleteWithMeta(
                                          emd->getConflictResMode()));
         }
         vb->setMaxCas(v->getCas());
-        queueDirty(vb, v, &lh, seqno, tapBackfill, true, genBySeqno, false);
+        queueDirty(vb, *v, &lh, seqno, tapBackfill, true, genBySeqno, false);
         break;
     case NEED_BG_FETCH:
         lh.unlock();
@@ -3370,7 +3370,7 @@ EventuallyPersistentStore::flushOneDelOrSet(const queued_item &qi,
 }
 
 void EventuallyPersistentStore::queueDirty(RCPtr<VBucket> &vb,
-                                           StoredValue* v,
+                                           StoredValue& v,
                                            LockHolder *plh,
                                            uint64_t *seqno,
                                            bool tapBackfill,
@@ -3378,20 +3378,20 @@ void EventuallyPersistentStore::queueDirty(RCPtr<VBucket> &vb,
                                            bool genBySeqno,
                                            bool setConflictMode) {
     if (vb) {
-        if (setConflictMode && (v->getConflictResMode() != last_write_wins) &&
+        if (setConflictMode && (v.getConflictResMode() != last_write_wins) &&
             vb->isTimeSyncEnabled()) {
-            v->setConflictResMode(last_write_wins);
+            v.setConflictResMode(last_write_wins);
         }
 
-        queued_item qi(v->toItem(false, vb->getId()));
+        queued_item qi(v.toItem(false, vb->getId()));
 
         bool rv = tapBackfill ? vb->queueBackfillItem(qi, genBySeqno) :
                                 vb->checkpointManager.queueDirty(vb, qi,
                                                                  genBySeqno);
-        v->setBySeqno(qi->getBySeqno());
+        v.setBySeqno(qi->getBySeqno());
 
         if (seqno) {
-            *seqno = v->getBySeqno();
+            *seqno = v.getBySeqno();
         }
 
         if (plh) {

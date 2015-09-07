@@ -898,7 +898,7 @@ private:
      * @param setConflictMode set the conflict resolution mode
      */
     void queueDirty(RCPtr<VBucket> &vb,
-                    StoredValue* v,
+                    StoredValue& v,
                     LockHolder *plh,
                     uint64_t *seqno,
                     bool tapBackfill = false,
