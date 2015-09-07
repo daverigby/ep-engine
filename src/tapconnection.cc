@@ -1230,7 +1230,7 @@ queued_item TapProducer::nextFgFetched_UNLOCKED(bool &shouldPause) {
             bool isLastItem = false;
             queued_item qi = vb->checkpointManager.nextItem(getName(),
                                                             isLastItem);
-            switch(qi->getOperation()) {
+            switch(qi.getItem()->getOperation()) {
             case queue_op_set:
             case queue_op_del:
                 if (supportCheckpointSync_ && isLastItem) {
@@ -1242,7 +1242,7 @@ queued_item TapProducer::nextFgFetched_UNLOCKED(bool &shouldPause) {
                 break;
             case queue_op_checkpoint_start:
                 {
-                    it->second.currentCheckpointId = qi->getRevSeqno();
+                    it->second.currentCheckpointId = qi.getItem()->getRevSeqno();
                     if (supportCheckpointSync_) {
                         it->second.state = checkpoint_start;
                         addCheckpointMessage_UNLOCKED(qi);
@@ -1436,7 +1436,7 @@ VBucketEvent TapProducer::checkDumpOrTakeOverCompletion() {
 }
 
 bool TapProducer::addEvent_UNLOCKED(const queued_item &it) {
-    if (vbucketFilter(it->getVBucketId())) {
+    if (vbucketFilter(it.getItem()->getVBucketId())) {
         bool wasEmpty = queue->empty();
         queue->push_back(it);
         ++queueSize;
@@ -1505,7 +1505,7 @@ queued_item TapProducer::nextCheckpointMessage_UNLOCKED() {
     if (!checkpointMsgs.empty()) {
         an_item = checkpointMsgs.front();
         checkpointMsgs.pop();
-        if (!vbucketFilter(an_item->getVBucketId())) {
+        if (!vbucketFilter(an_item.getItem()->getVBucketId())) {
             return nextCheckpointMessage_UNLOCKED();
         }
         ++checkpointMsgCounter;
@@ -1544,7 +1544,7 @@ void TapProducer::appendQueue(std::list<queued_item> *q) {
     size_t count = 0;
     std::list<queued_item>::iterator it = q->begin();
     for (; it != q->end(); ++it) {
-        if (vbucketFilter((*it)->getVBucketId())) {
+        if (vbucketFilter((*it).getItem()->getVBucketId())) {
             queue->push_back(*it);
             ++count;
         }
@@ -1779,8 +1779,9 @@ Item* TapProducer::getNextItem(const void *c, uint16_t *vbucket, uint16_t &ret,
 
     // Check if there are any checkpoint start / end messages to be sent to the TAP client.
     queued_item checkpoint_msg = nextCheckpointMessage_UNLOCKED();
-    if (checkpoint_msg.get() != NULL) {
-        switch (checkpoint_msg->getOperation()) {
+    if (checkpoint_msg.getItem().get() != nullptr ) {
+        Item& item = *checkpoint_msg.getItem();
+        switch (item.getOperation()) {
         case queue_op_checkpoint_start:
             ret = TAP_CHECKPOINT_START;
             break;
@@ -1790,17 +1791,17 @@ Item* TapProducer::getNextItem(const void *c, uint16_t *vbucket, uint16_t &ret,
         default:
             LOG(EXTENSION_LOG_WARNING,
                 "%s Checkpoint start or end msg with incorrect opcode %d",
-                logHeader(), checkpoint_msg->getOperation());
+                logHeader(), item.getOperation());
             ret = TAP_DISCONNECT;
             return NULL;
         }
-        *vbucket = checkpoint_msg->getVBucketId();
-        uint64_t cid = htonll(checkpoint_msg->getRevSeqno());
-        const std::string& key = checkpoint_msg->getKey();
+        *vbucket = item.getVBucketId();
+        uint64_t cid = htonll(item.getRevSeqno());
+        const std::string& key = item.getKey();
         itm = new Item(key.data(), key.length(), /*flags*/0, /*exp*/0,
                        &cid, sizeof(cid), /*ext_meta*/NULL, /*ext_len*/0,
                        /*cas*/0, /*seqno*/-1,
-                       checkpoint_msg->getVBucketId());
+                       item.getVBucketId());
         return itm;
     }
 
@@ -1851,18 +1852,19 @@ Item* TapProducer::getNextItem(const void *c, uint16_t *vbucket, uint16_t &ret,
 
         bool shouldPause = false;
         qi = nextFgFetched_UNLOCKED(shouldPause);
-        if (qi.get() == NULL) {
+        if (qi.getItem().get() == NULL) {
             ret = shouldPause ? TAP_PAUSE : TAP_NOOP;
             return NULL;
         }
-        *vbucket = qi->getVBucketId();
+        Item& item = *qi.getItem();
+        *vbucket = qi.getItem()->getVBucketId();
         if (!vbucketFilter(*vbucket)) {
             ret = TAP_NOOP;
             return NULL;
         }
 
-        if (qi->getOperation() == queue_op_set) {
-            GetValue gv(engine_.getEpStore()->get(qi->getKey(), qi->getVBucketId(),
+        if (item.getOperation() == queue_op_set) {
+            GetValue gv(engine_.getEpStore()->get(item.getKey(), item.getVBucketId(),
                                                   c, false, false, false));
             ENGINE_ERROR_CODE r = gv.getStatus();
             if (r == ENGINE_SUCCESS) {
@@ -1872,15 +1874,15 @@ Item* TapProducer::getNextItem(const void *c, uint16_t *vbucket, uint16_t &ret,
                 ret = TAP_MUTATION;
             } else if (r == ENGINE_KEY_ENOENT) {
                 // Item was deleted and set a message type to tap_deletion.
-                itm = new Item(qi->getKey().c_str(), qi->getNKey(),
+                itm = new Item(item.getKey().c_str(), item.getNKey(),
                                /*flags*/0, /*exp*/0,
                                /*data*/NULL, /*size*/0,
                                /*ext_meta*/NULL, /*ext_len*/0,
-                               /*cas*/0, /*seqno*/-1, qi->getVBucketId());
-                itm->setRevSeqno(qi->getRevSeqno());
+                               /*cas*/0, /*seqno*/-1, item.getVBucketId());
+                itm->setRevSeqno(item.getRevSeqno());
                 ret = TAP_DELETION;
             } else if (r == ENGINE_EWOULDBLOCK) {
-                queueBGFetch_UNLOCKED(qi->getKey(), gv.getId(), *vbucket);
+                queueBGFetch_UNLOCKED(item.getKey(), gv.getId(), *vbucket);
                 // If there's an item ready, return NOOP so we'll come
                 // back immediately, otherwise pause the connection
                 // while we wait.
@@ -1894,7 +1896,7 @@ Item* TapProducer::getNextItem(const void *c, uint16_t *vbucket, uint16_t &ret,
                 if (r == ENGINE_NOT_MY_VBUCKET) {
                     LOG(EXTENSION_LOG_WARNING, "%s Trying to fetch an item for "
                         "vbucket %d that doesn't exist on this server",
-                        logHeader(), qi->getVBucketId());
+                        logHeader(), item.getVBucketId());
                     ret = TAP_NOOP;
                 } else {
                     LOG(EXTENSION_LOG_WARNING, "%s Tap internal error with "
@@ -1904,13 +1906,13 @@ Item* TapProducer::getNextItem(const void *c, uint16_t *vbucket, uint16_t &ret,
                 return NULL;
             }
             ++stats.numTapFGFetched;
-        } else if (qi->getOperation() == queue_op_del) {
-            itm = new Item(qi->getKey().c_str(), qi->getNKey(),
+        } else if (item.getOperation() == queue_op_del) {
+            itm = new Item(item.getKey().c_str(), item.getNKey(),
                            /*flags*/0, /*exp*/0,
                            /*data*/NULL, /*size*/0,
                            /*ext_meta*/NULL, /*ext_len*/0,
-                           qi->getCas(), /*seqno*/-1, qi->getVBucketId());
-            itm->setRevSeqno(qi->getRevSeqno());
+                           item.getCas(), /*seqno*/-1, item.getVBucketId());
+            itm->setRevSeqno(item.getRevSeqno());
             ret = TAP_DELETION;
             ++stats.numTapDeletes;
         }
@@ -1922,7 +1924,7 @@ Item* TapProducer::getNextItem(const void *c, uint16_t *vbucket, uint16_t &ret,
         if (!isBackfillCompleted_UNLOCKED() && totalBackfillBacklogs > 0) {
             --totalBackfillBacklogs;
         }
-        transmitted[qi->getVBucketId()]++;
+        transmitted[qi.getItem()->getVBucketId()]++;
     }
 
     return itm;

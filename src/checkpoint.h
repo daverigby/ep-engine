@@ -271,12 +271,12 @@ public:
     uint64_t getLowSeqno() {
         std::list<queued_item>::iterator pos = toWrite.begin();
         pos++;
-        return (*pos)->getBySeqno();
+        return (*pos).getItem()->getBySeqno();
     }
 
     uint64_t getHighSeqno() {
         std::list<queued_item>::reverse_iterator pos = toWrite.rbegin();
-        return (*pos)->getBySeqno();
+        return (*pos).getItem()->getBySeqno();
     }
 
     uint64_t getSnapshotStartSeqno() {

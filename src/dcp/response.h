@@ -276,7 +276,9 @@ class MutationResponse : public DcpResponse {
 public:
     MutationResponse(queued_item item, uint32_t opaque,
                      ExtendedMetaData *e = NULL)
-        : DcpResponse(item->isDeleted() ? DCP_DELETION : DCP_MUTATION, opaque),
+        : DcpResponse(item.getItem()->isDeleted() ? DCP_DELETION
+                                                  : DCP_MUTATION,
+                      opaque),
           item_(item), emd(e) {}
 
     ~MutationResponse() {
@@ -285,30 +287,31 @@ public:
         }
     }
 
-    queued_item& getItem() {
-        return item_;
+    SingleThreadedRCPtr<Item> getItem() {
+        return item_.getItem();
     }
 
     Item* getItemCopy() {
-        return new Item(*item_);
+        return new Item(*item_.getItem());
     }
 
     uint16_t getVBucket() {
-        return item_->getVBucketId();
+        return item_.getItem()->getVBucketId();
     }
 
     uint64_t getBySeqno() {
-        return item_->getBySeqno();
+        return item_.getItem()->getBySeqno();
     }
 
     uint64_t getRevSeqno() {
-        return item_->getRevSeqno();
+        return item_.getItem()->getRevSeqno();
     }
 
     uint32_t getMessageSize() {
-        uint32_t base = item_->isDeleted() ? deletionBaseMsgBytes :
-                                             mutationBaseMsgBytes;
-        uint32_t body = item_->getNKey() + item_->getNBytes();
+        uint32_t base = item_.getItem()->isDeleted() ? deletionBaseMsgBytes :
+                                                       mutationBaseMsgBytes;
+        uint32_t body = item_.getItem()->getNKey() +
+                        item_.getItem()->getNBytes();
         if (emd) {
             body += emd->getExtMeta().second;
         }

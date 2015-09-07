@@ -2958,7 +2958,7 @@ class PersistenceCallback : public Callback<mutation_result>,
                             public Callback<int> {
 public:
 
-    PersistenceCallback(const queued_item &qi, RCPtr<VBucket> &vb,
+    PersistenceCallback(const SingleThreadedRCPtr<Item> qi, RCPtr<VBucket> &vb,
                         EventuallyPersistentStore *st, EPStats *s, uint64_t c)
         : queuedItem(qi), vbucket(vb), store(st), stats(s), cas(c) {
         cb_assert(vb);
@@ -3107,7 +3107,7 @@ private:
         vbucket->rejectQueue.push(queuedItem);
     }
 
-    const queued_item queuedItem;
+    const SingleThreadedRCPtr<Item> queuedItem;
     RCPtr<VBucket> vbucket;
     EventuallyPersistentStore *store;
     EPStats *stats;
@@ -3209,27 +3209,28 @@ int EventuallyPersistentStore::flushVBucket(uint16_t vbid) {
             std::list<PersistenceCallback*>& pcbs = rwUnderlying->getPersistenceCbList();
             std::vector<queued_item>::iterator it = items.begin();
             for(; it != items.end(); ++it) {
-                if ((*it)->getOperation() != queue_op_set &&
-                    (*it)->getOperation() != queue_op_del) {
+                Item& item = *(it->getItem());
+                if (item.getOperation() != queue_op_set &&
+                    item.getOperation() != queue_op_del) {
                     continue;
-                } else if (!prev || prev->getKey() != (*it)->getKey()) {
-                    prev = (*it).get();
+                } else if (!prev || prev->getKey() != item.getKey()) {
+                    prev = &item;
                     ++items_flushed;
                     PersistenceCallback *cb = flushOneDelOrSet(*it, vb);
                     if (cb) {
                         pcbs.push_back(cb);
                     }
 
-                    maxSeqno = std::max(maxSeqno, (uint64_t)(*it)->getBySeqno());
-                    maxCas = std::max(maxCas, (uint64_t)(*it)->getCas());
-                    if ((*it)->isDeleted()) {
+                    maxSeqno = std::max(maxSeqno, (uint64_t)item.getBySeqno());
+                    maxCas = std::max(maxCas, (uint64_t)item.getCas());
+                    if (item.isDeleted()) {
                         maxDeletedRevSeqno = std::max(maxDeletedRevSeqno,
-                                                      (uint64_t)(*it)->getRevSeqno());
+                                                      (uint64_t)item.getRevSeqno());
                     }
                     ++stats.flusher_todo;
                 } else {
                     stats.decrDiskQueueSize(1);
-                    vb->doStatsForFlushing(*(*it), (*it)->size());
+                    vb->doStatsForFlushing(item, item.size());
                 }
             }
 
@@ -3328,9 +3329,10 @@ EventuallyPersistentStore::flushOneDelOrSet(const queued_item &qi,
         return NULL;
     }
 
-    int64_t bySeqno = qi->getBySeqno();
-    bool deleted = qi->isDeleted();
-    rel_time_t queued(qi->getQueuedTime());
+    Item& item = *qi.getItem();
+    int64_t bySeqno = item.getBySeqno();
+    bool deleted = item.isDeleted();
+    rel_time_t queued(item.getQueuedTime());
 
     int dirtyAge = ep_current_time() - queued;
     stats.dirtyAgeHisto.add(dirtyAge * 1000000);
@@ -3340,14 +3342,14 @@ EventuallyPersistentStore::flushOneDelOrSet(const queued_item &qi,
 
     // Wait until the vbucket database is created by the vbucket state
     // snapshot task.
-    if (vbMap.isBucketCreation(qi->getVBucketId()) ||
-        vbMap.isBucketDeletion(qi->getVBucketId())) {
+    if (vbMap.isBucketCreation(item.getVBucketId()) ||
+        vbMap.isBucketDeletion(item.getVBucketId())) {
         vb->rejectQueue.push(qi);
         ++vb->opsReject;
         return NULL;
     }
 
-    KVStore *rwUnderlying = getRWUnderlying(qi->getVBucketId());
+    KVStore *rwUnderlying = getRWUnderlying(item.getVBucketId());
     if (!deleted) {
         // TODO: Need to separate disk_insert from disk_update because
         // bySeqno doesn't give us that information.
@@ -3356,15 +3358,15 @@ EventuallyPersistentStore::flushOneDelOrSet(const queued_item &qi,
                          bySeqno == -1 ? "disk_insert" : "disk_update",
                          stats.timingLog);
         PersistenceCallback *cb =
-            new PersistenceCallback(qi, vb, this, &stats, qi->getCas());
-        rwUnderlying->set(*qi, *cb);
+            new PersistenceCallback(qi.getItem(), vb, this, &stats, item.getCas());
+        rwUnderlying->set(item, *cb);
         return cb;
     } else {
         BlockTimer timer(&stats.diskDelHisto, "disk_delete",
                          stats.timingLog);
         PersistenceCallback *cb =
-            new PersistenceCallback(qi, vb, this, &stats, 0);
-        rwUnderlying->del(*qi, *cb);
+            new PersistenceCallback(qi.getItem(), vb, this, &stats, 0);
+        rwUnderlying->del(item, *cb);
         return cb;
     }
 }
@@ -3388,7 +3390,7 @@ void EventuallyPersistentStore::queueDirty(RCPtr<VBucket> &vb,
         bool rv = tapBackfill ? vb->queueBackfillItem(qi, genBySeqno) :
                                 vb->checkpointManager.queueDirty(vb, qi,
                                                                  genBySeqno);
-        v.setBySeqno(qi->getBySeqno());
+        v.setBySeqno(qi.getItem()->getBySeqno());
 
         if (seqno) {
             *seqno = v.getBySeqno();
@@ -3406,7 +3408,7 @@ void EventuallyPersistentStore::queueDirty(RCPtr<VBucket> &vb,
         if (!tapBackfill && notifyReplicator) {
             engine.getTapConnMap().notifyVBConnections(vb->getId());
             engine.getDcpConnMap().notifyVBConnections(vb->getId(),
-                                                       qi->getBySeqno());
+                                                       qi.getItem()->getBySeqno());
         }
     }
 }

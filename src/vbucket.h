@@ -326,14 +326,14 @@ public:
     bool queueBackfillItem(queued_item& qi, bool genSeqno) {
         LockHolder lh(backfill.mutex);
         if (genSeqno) {
-            qi->setBySeqno(checkpointManager.nextBySeqno());
+            qi.getItem()->setBySeqno(checkpointManager.nextBySeqno());
         } else {
-            checkpointManager.setBySeqno(qi->getBySeqno());
+            checkpointManager.setBySeqno(qi.getItem()->getBySeqno());
         }
         backfill.items.push(qi);
         ++stats.diskQueueSize;
         ++stats.totalEnqueued;
-        doStatsForQueueing(*qi, qi->size());
+        doStatsForQueueing(*qi.getItem(), qi.getItem()->size());
         stats.memOverhead.fetch_add(sizeof(queued_item));
         return true;
     }

@@ -124,8 +124,8 @@ static void launch_persistence_thread(void *arg) {
         const std::string cursor(CheckpointManager::pCursorName);
         args->checkpoint_manager->getAllItemsForCursor(cursor, items);
         for(itemPos = 0; itemPos < items.size(); ++itemPos) {
-            queued_item qi = items.at(itemPos);
-            if (qi->getOperation() == queue_op_flush) {
+            Item& item = *items.at(itemPos).getItem();
+            if (item.getOperation() == queue_op_flush) {
                 flush = true;
                 break;
             }
@@ -135,10 +135,10 @@ static void launch_persistence_thread(void *arg) {
             // the items queue after the "flush" operation was added. Ignore
             // these. Anything else will be considered an error.
             for(size_t i = itemPos + 1; i < items.size(); ++i) {
-                queued_item qi = items.at(i);
-                EXPECT_TRUE(queue_op_checkpoint_start == qi->getOperation() ||
-                            queue_op_checkpoint_end == qi->getOperation())
-                    << "Unexpected operation:" << qi->getOperation();
+                Item& item = *items.at(itemPos).getItem();
+                EXPECT_TRUE(queue_op_checkpoint_start == item.getOperation() ||
+                            queue_op_checkpoint_end == item.getOperation())
+                    << "Unexpected operation:" << item.getOperation();
             }
             break;
         }
@@ -161,7 +161,7 @@ static void launch_tap_client_thread(void *arg) {
     while(true) {
         queued_item qi = args->checkpoint_manager->nextItem(args->name,
                                                             isLastItem);
-        if (qi->getOperation() == queue_op_flush) {
+        if (qi.getItem()->getOperation() == queue_op_flush) {
             flush = true;
             break;
         }
@@ -336,20 +336,20 @@ TEST_F(CheckpointTest, reset_checkpoint_id) {
     const std::string cursor(CheckpointManager::pCursorName);
     manager->getAllItemsForCursor(cursor, items);
     for(itemPos = 0; itemPos < items.size(); ++itemPos) {
-        queued_item qi = items.at(itemPos);
-        if (qi->getOperation() != queue_op_checkpoint_start &&
-            qi->getOperation() != queue_op_checkpoint_end) {
-            size_t mid = qi->getBySeqno();
+        Item& item = *items.at(itemPos).getItem();
+        if (item.getOperation() != queue_op_checkpoint_start &&
+            item.getOperation() != queue_op_checkpoint_end) {
+            size_t mid = item.getBySeqno();
             EXPECT_GT(mid, lastMutationId);
-            lastMutationId = qi->getBySeqno();
+            lastMutationId = item.getBySeqno();
         }
         if (itemPos == 0 || itemPos == (items.size() - 1)) {
-            EXPECT_EQ(queue_op_checkpoint_start, qi->getOperation()) << "For itemPos:" << itemPos;
+            EXPECT_EQ(queue_op_checkpoint_start, item.getOperation()) << "For itemPos:" << itemPos;
         } else if (itemPos == (items.size() - 2)) {
-            EXPECT_EQ(queue_op_checkpoint_end, qi->getOperation()) << "For itemPos:" << itemPos;
+            EXPECT_EQ(queue_op_checkpoint_end, item.getOperation()) << "For itemPos:" << itemPos;
             chk++;
         } else {
-            EXPECT_EQ(queue_op_set, qi->getOperation()) << "For itemPos:" << itemPos;
+            EXPECT_EQ(queue_op_set, item.getOperation()) << "For itemPos:" << itemPos;
         }
     }
     EXPECT_EQ(13, items.size());
@@ -389,8 +389,8 @@ TEST_F(CheckpointTest, OneOpenCkpt) {
     EXPECT_TRUE(manager->queueDirty(vbucket, qi, true));
     EXPECT_EQ(1, manager->getNumCheckpoints());  // Single open checkpoint.
     EXPECT_EQ(2, manager->getNumOpenChkItems()); // 1x op_checkpoint_start, 1x op_set
-    EXPECT_EQ(1001, qi->getBySeqno());
-    EXPECT_EQ(20, qi->getRevSeqno());
+    EXPECT_EQ(1001, qi.getItem()->getBySeqno());
+    EXPECT_EQ(20, qi.getItem()->getRevSeqno());
     EXPECT_EQ(1, manager->getNumItemsForCursor(CheckpointManager::pCursorName));
 
     // Adding the same key again shouldn't increase the size.
@@ -399,8 +399,8 @@ TEST_F(CheckpointTest, OneOpenCkpt) {
     EXPECT_FALSE(manager->queueDirty(vbucket, qi2, true));
     EXPECT_EQ(1, manager->getNumCheckpoints());
     EXPECT_EQ(2, manager->getNumOpenChkItems());
-    EXPECT_EQ(1002, qi2->getBySeqno());
-    EXPECT_EQ(21, qi2->getRevSeqno());
+    EXPECT_EQ(1002, qi2.getItem()->getBySeqno());
+    EXPECT_EQ(21, qi2.getItem()->getRevSeqno());
     EXPECT_EQ(1, manager->getNumItemsForCursor(CheckpointManager::pCursorName));
 
     // Adding a different key should increase size.
@@ -409,8 +409,8 @@ TEST_F(CheckpointTest, OneOpenCkpt) {
     EXPECT_TRUE(manager->queueDirty(vbucket, qi3, true));
     EXPECT_EQ(1, manager->getNumCheckpoints());
     EXPECT_EQ(3, manager->getNumOpenChkItems());
-    EXPECT_EQ(1003, qi3->getBySeqno());
-    EXPECT_EQ(0, qi3->getRevSeqno());
+    EXPECT_EQ(1003, qi3.getItem()->getBySeqno());
+    EXPECT_EQ(0, qi3.getItem()->getRevSeqno());
     EXPECT_EQ(2, manager->getNumItemsForCursor(CheckpointManager::pCursorName));
 }
 
@@ -469,19 +469,18 @@ TEST_F(CheckpointTest, ItemBasedCheckpointCreation) {
     EXPECT_EQ(1, manager->getNumCheckpoints());
 
     // Create one less than the number required to create a new checkpoint.
-    queued_item qi;
     for (unsigned int ii = 0; ii < MIN_CHECKPOINT_ITEMS; ii++) {
         EXPECT_EQ(ii + 1, manager->getNumOpenChkItems()); /* +1 for op_ckpt_start */
 
-        qi.reset(new Item("key" + std::to_string(ii), vbucket->getId(),
-                          queue_op_set, /*revSeq*/0, /*bySeq*/0));
+        queued_item qi(new Item("key" + std::to_string(ii), vbucket->getId(),
+                                queue_op_set, /*revSeq*/0, /*bySeq*/0));
         EXPECT_TRUE(manager->queueDirty(vbucket, qi, true));
         EXPECT_EQ(1, manager->getNumCheckpoints());
 
     }
 
     // Add one more - should create a new checkpoint.
-    qi.reset(new Item("key_epoch", vbucket->getId(), queue_op_set, /*revSeq*/0,
+    queued_item qi(new Item("key_epoch", vbucket->getId(), queue_op_set, /*revSeq*/0,
                       /*bySeq*/0));
     EXPECT_TRUE(manager->queueDirty(vbucket, qi, true));
     EXPECT_EQ(2, manager->getNumCheckpoints());
@@ -491,7 +490,7 @@ TEST_F(CheckpointTest, ItemBasedCheckpointCreation) {
     for (unsigned int ii = 0; ii < MIN_CHECKPOINT_ITEMS - 1; ii++) {
         EXPECT_EQ(ii + 2, manager->getNumOpenChkItems()); /* +2 op_ckpt_start, key_epoch */
 
-        qi.reset(new Item("key" + std::to_string(ii), vbucket->getId(),
+        queued_item qi(new Item("key" + std::to_string(ii), vbucket->getId(),
                                 queue_op_set, /*revSeq*/1, /*bySeq*/0));
         EXPECT_TRUE(manager->queueDirty(vbucket, qi, true));
         EXPECT_EQ(2, manager->getNumCheckpoints());
@@ -499,9 +498,9 @@ TEST_F(CheckpointTest, ItemBasedCheckpointCreation) {
 
     // Add one more - as we have hit maximum checkpoints should *not* create a
     // new one.
-    qi.reset(new Item("key_epoch2", vbucket->getId(), queue_op_set,
-                      /*revSeq*/1, /*bySeq*/0));
-    EXPECT_TRUE(manager->queueDirty(vbucket, qi, true));
+    queued_item qi2(new Item("key_epoch2", vbucket->getId(), queue_op_set,
+                             /*revSeq*/1, /*bySeq*/0));
+    EXPECT_TRUE(manager->queueDirty(vbucket, qi2, true));
     EXPECT_EQ(2, manager->getNumCheckpoints());
     EXPECT_EQ(12, // 1x op_ckpt_start, 1x key_epoch, 9x key_X, 1x key_epoch2
               manager->getNumOpenChkItems());
@@ -519,9 +518,9 @@ TEST_F(CheckpointTest, ItemBasedCheckpointCreation) {
     EXPECT_EQ(12, manager->getNumOpenChkItems());
 
     // But adding a new item will create a new one.
-    qi.reset(new Item("key_epoch3", vbucket->getId(), queue_op_set,
-                      /*revSeq*/1, /*bySeq*/0));
-    EXPECT_TRUE(manager->queueDirty(vbucket, qi, true));
+    queued_item qi3(new Item("key_epoch3", vbucket->getId(), queue_op_set,
+                             /*revSeq*/1, /*bySeq*/0));
+    EXPECT_TRUE(manager->queueDirty(vbucket, qi3, true));
     EXPECT_EQ(3, manager->getNumCheckpoints());
     EXPECT_EQ(2, manager->getNumOpenChkItems()); // 1x op_ckpt_start, 1x op_set
 }

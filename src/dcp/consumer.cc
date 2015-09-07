@@ -260,7 +260,8 @@ ENGINE_ERROR_CODE DcpConsumer::mutation(uint32_t opaque, const void* key,
 
         MutationResponse* response;
         try {
-            response = new MutationResponse(item, opaque, emd);
+            queued_item qi(item);
+            response = new MutationResponse(qi, opaque, emd);
         } catch (const std::bad_alloc&) {
             return ENGINE_ENOMEM;
         }
@@ -323,7 +324,8 @@ ENGINE_ERROR_CODE DcpConsumer::deletion(uint32_t opaque, const void* key,
 
         MutationResponse* response;
         try {
-            response = new MutationResponse(item, opaque, emd);
+            queued_item qi(item);
+            response = new MutationResponse(qi, opaque, emd);
         } catch (const std::bad_alloc&) {
             return ENGINE_ENOMEM;
         }

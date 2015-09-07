@@ -137,11 +137,11 @@ public:
     {
         seqno_ = seqno;
         event_ = TAP_MUTATION;
-        vbucket_ = qi->getVBucketId();
+        vbucket_ = qi.getItem()->getVBucketId();
         state_ = vbucket_state_active;
         item_ = qi;
 
-        switch(item_->getOperation()) {
+        switch(item_.getItem()->getOperation()) {
         case queue_op_set:
             event_ = TAP_MUTATION;
             break;

@@ -261,7 +261,8 @@ bool ActiveStream::backfillReceived(Item* itm, backfill_source_t backfill_source
         bufferedBackfill.bytes.fetch_add(itm->size());
         bufferedBackfill.items++;
 
-        pushToReadyQ(new MutationResponse(itm, opaque_,
+        queued_item qi(itm);
+        pushToReadyQ(new MutationResponse(qi, opaque_,
                           prepareExtendedMetaData(itm->getVBucketId(),
                                                   itm->getConflictResMode())));
         lastReadSeqno = itm->getBySeqno();
@@ -555,13 +556,13 @@ void ActiveStream::nextCheckpointItem() {
         return;
     }
 
-    if (items.front()->getOperation() == queue_op_checkpoint_start) {
+    if (items.front().getItem()->getOperation() == queue_op_checkpoint_start) {
         mark = true;
     }
 
     std::vector<queued_item>::iterator itr = items.begin();
     for (; itr != items.end(); ++itr) {
-        queued_item& qi = *itr;
+        SingleThreadedRCPtr<Item> qi = itr->getItem();
 
         if (qi->getOperation() == queue_op_set ||
             qi->getOperation() == queue_op_del) {

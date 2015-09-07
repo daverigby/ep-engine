@@ -686,7 +686,34 @@ private:
     DISALLOW_ASSIGN(Item);
 };
 
-typedef SingleThreadedRCPtr<Item> queued_item;
+/* Represents an item which is queued into a checkpoint.
+ *
+ */
+class QueuedItem {
+public:
+    QueuedItem()
+        : item(nullptr),
+          ancestor_blob(nullptr) {}
+
+    QueuedItem(SingleThreadedRCPtr<Item> item_)
+        : item(item_),
+          ancestor_blob(nullptr) {}
+
+    /* Returns a pointer to the underlying Item in the queue. */
+    SingleThreadedRCPtr<Item> getItem() const {
+        return item;
+    }
+
+private:
+    // The Item which has been queued into the checkpoint.
+    SingleThreadedRCPtr<Item> item;
+
+    // If available, the blob from the ancestor of this item (i.e. the previus
+    // value for this particular key).
+    SingleThreadedRCPtr<Blob> ancestor_blob;
+};
+
+typedef QueuedItem queued_item;
 
 /**
  * Order queued_item objects pointed by shared_ptr by their keys.
@@ -695,7 +722,7 @@ class CompareQueuedItemsByKey {
 public:
     CompareQueuedItemsByKey() {}
     bool operator()(const queued_item &i1, const queued_item &i2) {
-        return i1->getKey() < i2->getKey();
+        return i1.getItem()->getKey() < i2.getItem()->getKey();
     }
 };
 
@@ -706,9 +733,12 @@ class CompareQueuedItemsBySeqnoAndKey {
 public:
     CompareQueuedItemsBySeqnoAndKey() {}
     bool operator()(const queued_item &i1, const queued_item &i2) {
-        return i1->getKey() == i2->getKey()
-            ? i1->getBySeqno() < i2->getBySeqno()
-            : i1->getKey() < i2->getKey();
+        auto item1(i1.getItem());
+        auto item2(i2.getItem());
+
+        return item1->getKey() == item2->getKey()
+            ? item1->getBySeqno() < item2->getBySeqno()
+            : item1->getKey() < item2->getKey();
     }
 };
 
