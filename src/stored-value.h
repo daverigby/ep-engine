@@ -984,7 +984,7 @@ public:
      * @param nru the nru bit for the item
      * @return a result indicating the status of the store
      */
-    mutation_type_t set(const Item &val,
+    mutation_type_t set(Item &val,
                         item_eviction_policy_t policy = VALUE_ONLY,
                         uint8_t nru=0xff)
     {
@@ -1004,7 +1004,7 @@ public:
      * @param isReplication true if issued by consumer (for replication)
      * @return a result indicating the status of the store
      */
-    mutation_type_t set(const Item &val, uint64_t cas, bool allowExisting,
+    mutation_type_t set(Item &val, uint64_t cas, bool allowExisting,
                         bool hasMetaData = true, item_eviction_policy_t policy = VALUE_ONLY,
                         uint8_t nru=0xff) {
         int bucket_num(0);
@@ -1013,13 +1013,15 @@ public:
         return unlocked_set(v, val, cas, allowExisting, hasMetaData, policy, nru);
     }
 
-    mutation_type_t unlocked_set(StoredValue*& v, const Item &val, uint64_t cas,
+    /* Set an Item into this hashtable. UNLOCKED version - call only if you
+     * have already acquired the bucket lock.
+     */
+    mutation_type_t unlocked_set(StoredValue*& v, Item &itm, uint64_t cas,
                                  bool allowExisting, bool hasMetaData = true,
                                  item_eviction_policy_t policy = VALUE_ONLY,
                                  uint8_t nru=0xff, bool maybeKeyExists=true,
                                  bool isReplication = false) {
         cb_assert(isActive());
-        Item &itm = const_cast<Item&>(val);
         if (!StoredValue::hasAvailableSpace(stats, itm, isReplication)) {
             return NOMEM;
         }

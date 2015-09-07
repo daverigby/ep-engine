@@ -777,7 +777,7 @@ ENGINE_ERROR_CODE EventuallyPersistentStore::addTempItemForBgFetch(
     return ENGINE_EWOULDBLOCK;
 }
 
-ENGINE_ERROR_CODE EventuallyPersistentStore::set(const Item &itm,
+ENGINE_ERROR_CODE EventuallyPersistentStore::set(Item &itm,
                                                  const void *cookie,
                                                  bool force,
                                                  uint8_t nru) {
@@ -940,7 +940,7 @@ ENGINE_ERROR_CODE EventuallyPersistentStore::add(const Item &itm,
     return ENGINE_SUCCESS;
 }
 
-ENGINE_ERROR_CODE EventuallyPersistentStore::replace(const Item &itm,
+ENGINE_ERROR_CODE EventuallyPersistentStore::replace(Item &itm,
                                                      const void *cookie) {
     RCPtr<VBucket> vb = getVBucket(itm.getVBucketId());
     if (!vb || vb->getState() == vbucket_state_dead ||
@@ -1026,7 +1026,7 @@ ENGINE_ERROR_CODE EventuallyPersistentStore::replace(const Item &itm,
 }
 
 ENGINE_ERROR_CODE EventuallyPersistentStore::addTAPBackfillItem(
-                                                        const Item &itm,
+                                                        Item &itm,
                                                         uint8_t nru,
                                                         bool genBySeqno,
                                                         ExtendedMetaData *emd) {
@@ -2130,7 +2130,7 @@ ENGINE_ERROR_CODE EventuallyPersistentStore::getMetaData(
 }
 
 ENGINE_ERROR_CODE EventuallyPersistentStore::setWithMeta(
-                                                     const Item &itm,
+                                                     Item &itm,
                                                      uint64_t cas,
                                                      uint64_t *seqno,
                                                      const void *cookie,
