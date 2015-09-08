@@ -607,7 +607,7 @@ static void perf_dcp_client(struct Handle_args *ha) {
                 default:
                     break;
             }
-            dcp_last_op = 0;
+            dcp_last_op = PROTOCOL_BINARY_CMD_INVALID;
         }
     } while (!done);
 

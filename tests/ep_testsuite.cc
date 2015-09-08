@@ -3863,7 +3863,7 @@ static enum test_result test_dcp_consumer_flow_control_aggressive(
                 "Flow Control Buffer Size not correct");
         checkeq(ENGINE_WANT_MORE, h1->dcp.step(h, cookie[i], producers),
                 "Pending flow control buffer change not processed");
-        checkeq((uint8_t)PROTOCOL_BINARY_CMD_DCP_CONTROL, dcp_last_op,
+        checkeq(PROTOCOL_BINARY_CMD_DCP_CONTROL, dcp_last_op,
                 "Flow ctl buf size change control message not received");
         check(dcp_last_key.compare("connection_buffer_size") == 0,
               "Flow ctl buf size change control message key error");
@@ -3951,7 +3951,7 @@ static enum test_result test_dcp_noop(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
                 abort();
             }
 
-            dcp_last_op = 0;
+            dcp_last_op = PROTOCOL_BINARY_CMD_INVALID;
         }
     }
 
@@ -3998,7 +3998,7 @@ static enum test_result test_dcp_noop_fail(ENGINE_HANDLE *h,
                 abort();
             }
 
-            dcp_last_op = 0;
+            dcp_last_op = PROTOCOL_BINARY_CMD_INVALID;
         }
     }
 
@@ -4238,7 +4238,7 @@ static void dcp_stream(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1, const char *name,
                     check(false, ss.str().c_str());
             }
             if (dcp_last_op != PROTOCOL_BINARY_CMD_DCP_STREAM_END) {
-                dcp_last_op = 0;
+                dcp_last_op = PROTOCOL_BINARY_CMD_INVALID;
                 dcp_last_nru = 0;
             }
         }
@@ -4908,7 +4908,7 @@ static test_result test_dcp_takeover_no_items(ENGINE_HANDLE *h,
                     break;
                     abort();
             }
-            dcp_last_op = 0;
+            dcp_last_op = PROTOCOL_BINARY_CMD_INVALID;
         }
     } while (!done);
 

@@ -22,7 +22,7 @@
 #include "item.h"
 #include "mock_dcp.h"
 
-uint8_t dcp_last_op;
+protocol_binary_command dcp_last_op;
 uint8_t dcp_last_status;
 uint8_t dcp_last_nru;
 uint16_t dcp_last_vbucket;
@@ -300,7 +300,7 @@ static ENGINE_ERROR_CODE mock_control(const void* cookie,
 }
 
 void clear_dcp_data() {
-    dcp_last_op = 0;
+    dcp_last_op = PROTOCOL_BINARY_CMD_INVALID;
     dcp_last_status = 0;
     dcp_last_nru = 0;
     dcp_last_vbucket = 0;
