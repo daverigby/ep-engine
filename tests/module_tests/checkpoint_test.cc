@@ -525,6 +525,128 @@ TEST_F(CheckpointTest, ItemBasedCheckpointCreation) {
     EXPECT_EQ(2, manager->getNumOpenChkItems()); // 1x op_ckpt_start, 1x op_set
 }
 
+Item* make_set_op(const std::string& key, const std::string& value,
+                  uint64_t vbid) {
+    Item* result = new Item(key, vbid, queue_op_set, /*revSeq*/0, /*bySeq*/0);
+    result->setValue(Blob::New(value.data(), value.size(), nullptr, 0));
+    return result;
+}
+
+/* Test queuing items with a known ancestor in the same checkpoint. */
+TEST_F(CheckpointTest, QueueWithAncestor_SingleCkpt) {
+
+    // Create initial item and queue it.
+    queued_item item_a(make_set_op("key", "value_a", vbucket->getId()));
+    EXPECT_TRUE(manager->queueDirty(vbucket, item_a, true));
+
+    // Create a second set op to this key, with a different Blob.
+    queued_item item_b(make_set_op("key", "value_b", vbucket->getId()));
+
+    // Queue it. Same key in same checkpoint, so shouldn't create new entry in
+    // checkpoint, hence EXPECT_FALSE
+    EXPECT_FALSE(manager->queueDirty(vbucket, item_b, true));
+    EXPECT_EQ(1, manager->getNumCheckpoints());
+
+    // Resulting queued item should *not* have an ancestor as both StoredValues
+    // ended up in the same checkpoint.
+    snapshot_range_t range;
+    std::vector<queued_item> items;
+    range = manager->getAllItemsForCursor(CheckpointManager::pCursorName,
+                                          items);
+
+    EXPECT_EQ(2, items.size());
+    EXPECT_EQ("key", items.at(1).getItem()->getKey());
+    // Delta shouldn't be possible as no ancestor.
+    EXPECT_FALSE(items.at(1).hasAncestor());
+}
+
+/* Test queuing items with a known ancestor */
+TEST_F(CheckpointTest, QueueWithAncestor_TwoCkpt) {
+
+    // Create initial item and queue it.
+    queued_item item_a(make_set_op("key", "value_a", vbucket->getId()));
+    EXPECT_TRUE(manager->queueDirty(vbucket, item_a, true));
+
+    // Force a new checkpoint - needed to the ancestor is in a different
+    // checkpoint and we can calculate it.
+    manager->createNewCheckpoint();
+
+    // Fetch all existing items.
+    snapshot_range_t range;
+    std::vector<queued_item> items;
+    range = manager->getAllItemsForCursor(CheckpointManager::pCursorName,
+                                          items);
+    EXPECT_EQ(4, items.size()); // [start, set, end], [start
+    items.clear();
+
+    // Create a second set op to this key, with a different Blob; and
+    // referencing it's ancestor.
+    queued_item item_b(make_set_op("key", "value_b", vbucket->getId()),
+                       item_a.getItem()->getValue(),
+                       item_a.getItem()->getBySeqno());
+
+    // Queue second OP. Same key in new checkpoint, so should create new entry
+    // in checkpoint, hence EXPECT_TRUE
+    EXPECT_TRUE(manager->queueDirty(vbucket, item_b, true));
+
+    // Resulting queued item should have an ancestor as both StoredValues
+    // ended up in the same checkpoint.
+    range = manager->getAllItemsForCursor(CheckpointManager::pCursorName,
+                                          items);
+
+    EXPECT_EQ(1, items.size());
+    EXPECT_EQ("key", items.at(0).getItem()->getKey());
+    EXPECT_TRUE(items.at(0).hasAncestor());
+    EXPECT_EQ("value_a", items.at(0).getAncestor()->to_s());
+}
+
+/* Test queuing items with ancestors, multiple updates per checkpoint. */
+TEST_F(CheckpointTest, QueueWithAncestor_TwoCkpt_ThreeOps) {
+
+    // Create initial item and queue it.
+    queued_item item_a(make_set_op("key", "value_a", vbucket->getId()));
+    EXPECT_TRUE(manager->queueDirty(vbucket, item_a, true));
+
+    // Force a new checkpoint - needed to the ancestor is in a different
+    // checkpoint and we can calculate it.
+    manager->createNewCheckpoint();
+
+    // Fetch all existing items.
+    snapshot_range_t range;
+    std::vector<queued_item> items;
+    range = manager->getAllItemsForCursor(CheckpointManager::pCursorName,
+                                          items);
+    EXPECT_EQ(4, items.size()); // [start, set, end], [start
+    items.clear();
+
+    // Create a second set op to this key, with a different Blob; and
+    // referencing it's ancestor.
+    queued_item item_b(make_set_op("key", "value_b", vbucket->getId()),
+                       item_a.getItem()->getValue(),
+                       item_a.getItem()->getBySeqno());
+
+    // Queue second OP. Same key in new checkpoint, so should create new entry
+    // in checkpoint, hence EXPECT_TRUE
+    EXPECT_TRUE(manager->queueDirty(vbucket, item_b, true));
+
+    // Create 3rd op and queue it. In same checkpoint, but ancestor should
+    // transfer.
+    queued_item item_c(make_set_op("key", "value_c", vbucket->getId()),
+                       item_b.getItem()->getValue(),
+                       item_b.getItem()->getBySeqno());
+    EXPECT_FALSE(manager->queueDirty(vbucket, item_c, true));
+
+    // Resulting queued item should have an ancestor as both StoredValues
+    // ended up in the same checkpoint.
+    range = manager->getAllItemsForCursor(CheckpointManager::pCursorName,
+                                          items);
+
+    EXPECT_EQ(1, items.size());
+    EXPECT_EQ("key", items.at(0).getItem()->getKey());
+    EXPECT_TRUE(items.at(0).hasAncestor());
+    EXPECT_EQ("value_a", items.at(0).getAncestor()->to_s());
+}
+
 /* static storage for environment variable set by putenv(). */
 static char allow_no_stats_env[] = "ALLOW_NO_STATS_UPDATE=yeah";
 
