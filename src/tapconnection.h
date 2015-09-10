@@ -199,6 +199,16 @@ public:
                                        uint32_t exptime, uint8_t nru,
                                        const void* meta, uint16_t nmeta);
 
+    virtual ENGINE_ERROR_CODE delta_mutation(uint32_t opaque, const char* key,
+                                             uint16_t nkey, const char* delta,
+                                             uint32_t ndelta, uint64_t cas,
+                                             uint16_t vbucket, uint32_t flags,
+                                             uint8_t datatype, uint32_t locktime,
+                                             uint64_t bySeqno, uint64_t revSeqno,
+                                             uint64_t ancestor_byseqno,
+                                             uint32_t exptime, uint8_t nru,
+                                             const char* meta, uint16_t nmeta);
+
     virtual ENGINE_ERROR_CODE deletion(uint32_t opaque, const void* key,
                                        uint16_t nkey, uint64_t cas,
                                        uint16_t vbucket, uint64_t bySeqno,

@@ -518,6 +518,7 @@ DcpResponse* ActiveStream::nextQueuedItem() {
     if (!readyQ.empty()) {
         DcpResponse* response = readyQ.front();
         if (response->getEvent() == DCP_MUTATION ||
+            response->getEvent() == DCP_DELTA_MUTATION ||
             response->getEvent() == DCP_DELETION ||
             response->getEvent() == DCP_EXPIRATION) {
             lastSentSeqno = dynamic_cast<MutationResponse*>(response)->getBySeqno();
@@ -562,17 +563,17 @@ void ActiveStream::nextCheckpointItem() {
 
     std::vector<queued_item>::iterator itr = items.begin();
     for (; itr != items.end(); ++itr) {
-        SingleThreadedRCPtr<Item> qi = itr->getItem();
+        queued_item qi = *itr;
 
-        if (qi->getOperation() == queue_op_set ||
-            qi->getOperation() == queue_op_del) {
-            curChkSeqno = qi->getBySeqno();
-            lastReadSeqno = qi->getBySeqno();
+        if (qi.getItem()->getOperation() == queue_op_set ||
+            qi.getItem()->getOperation() == queue_op_del) {
+            curChkSeqno = qi.getItem()->getBySeqno();
+            lastReadSeqno = qi.getItem()->getBySeqno();
 
             mutations.push_back(new MutationResponse(qi, opaque_,
-                           prepareExtendedMetaData(qi->getVBucketId(),
-                                                   qi->getConflictResMode())));
-        } else if (qi->getOperation() == queue_op_checkpoint_start) {
+                           prepareExtendedMetaData(qi.getItem()->getVBucketId(),
+                                                   qi.getItem()->getConflictResMode())));
+        } else if (qi.getItem()->getOperation() == queue_op_checkpoint_start) {
             cb_assert(mutations.empty());
             mark = true;
         }

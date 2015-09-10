@@ -254,12 +254,32 @@ ENGINE_ERROR_CODE DcpProducer::step(struct dcp_message_producers* producers) {
     ret = ENGINE_SUCCESS;
 
     Item* itmCpy = NULL;
-    if (resp->getEvent() == DCP_MUTATION) {
+    // TODO: Why do we need to take a copy??
+    if (resp->getEvent() == DCP_MUTATION ||
+        resp->getEvent() == DCP_DELTA_MUTATION) {
         itmCpy = static_cast<MutationResponse*>(resp)->getItemCopy();
     }
 
     EventuallyPersistentEngine *epe = ObjectRegistry::onSwitchThread(NULL,
                                                                      true);
+
+
+    // Obtain the metadata if there is any - needed for deletion & mutations.
+    std::pair<const char*, uint16_t> meta = {NULL, 0};
+    MutationResponse *m = nullptr;
+    switch (resp->getEvent()) {
+    case DCP_MUTATION:
+    case DCP_DELTA_MUTATION:
+    case DCP_DELETION:
+        m = dynamic_cast<MutationResponse*> (resp);
+        if (m->getExtMetaData()) {
+            meta = m->getExtMetaData()->getExtMeta();
+        }
+        break;
+    default:
+        break;
+    }
+
     switch (resp->getEvent()) {
         case DCP_STREAM_END:
         {
@@ -270,13 +290,6 @@ ENGINE_ERROR_CODE DcpProducer::step(struct dcp_message_producers* producers) {
         }
         case DCP_MUTATION:
         {
-            MutationResponse *m = dynamic_cast<MutationResponse*> (resp);
-            // Obtain the metadata if there is any; then call the mutation
-            // producer.
-            std::pair<const char*, uint16_t> meta = {NULL, 0};
-            if (m->getExtMetaData()) {
-                meta = m->getExtMetaData()->getExtMeta();
-            }
             ret = producers->mutation(getCookie(), m->getOpaque(), itmCpy,
                                       m->getVBucket(), m->getBySeqno(),
                                       m->getRevSeqno(), 0,
@@ -284,15 +297,21 @@ ENGINE_ERROR_CODE DcpProducer::step(struct dcp_message_producers* producers) {
                                       m->getItem()->getNRUValue());
             break;
         }
+        case DCP_DELTA_MUTATION:
+        {
+            ret = producers->delta_mutation(getCookie(), m->getOpaque(),
+                                            itmCpy,
+                                            m->getAncestor()->getData(),
+                                            m->getAncestor()->vlength(),
+                                            m->getAncestorBySeqno(),
+                                            m->getVBucket(), m->getBySeqno(),
+                                            m->getRevSeqno(), 0,
+                                            meta.first, meta.second,
+                                            m->getItem()->getNRUValue());
+            break;
+        }
         case DCP_DELETION:
         {
-            MutationResponse *m = static_cast<MutationResponse*>(resp);
-            // Obtain the metadata if there is any; then call the deletion
-            // producer.
-            std::pair<const char*, uint16_t> meta = {NULL, 0};
-            if (m->getExtMetaData()) {
-                meta = m->getExtMetaData()->getExtMeta();
-            }
             ret = producers->deletion(getCookie(), m->getOpaque(),
                                       m->getItem()->getKey().c_str(),
                                       m->getItem()->getNKey(),
@@ -329,7 +348,9 @@ ENGINE_ERROR_CODE DcpProducer::step(struct dcp_message_producers* producers) {
     }
 
     ObjectRegistry::onSwitchThread(epe);
-    if (resp->getEvent() == DCP_MUTATION && ret != ENGINE_SUCCESS) {
+    if ((resp->getEvent() == DCP_MUTATION ||
+         resp->getEvent() == DCP_DELTA_MUTATION)
+        && ret != ENGINE_SUCCESS) {
         delete itmCpy;
     }
 
@@ -681,6 +702,7 @@ DcpResponse* DcpProducer::getNextItem() {
         switch (op->getEvent()) {
             case DCP_SNAPSHOT_MARKER:
             case DCP_MUTATION:
+            case DCP_DELTA_MUTATION:
             case DCP_DELETION:
             case DCP_EXPIRATION:
             case DCP_STREAM_END:
@@ -714,9 +736,15 @@ DcpResponse* DcpProducer::getNextItem() {
 
         ready.push_back(vbucket);
 
-        if (op->getEvent() == DCP_MUTATION || op->getEvent() == DCP_DELETION ||
-            op->getEvent() == DCP_EXPIRATION) {
+        switch (op->getEvent()) {
+        case DCP_MUTATION:
+        case DCP_DELTA_MUTATION:
+        case DCP_DELETION:
+        case DCP_EXPIRATION:
             itemsSent++;
+            break;
+        default:
+            break;
         }
 
         totalBytesSent = totalBytesSent + op->getMessageSize();

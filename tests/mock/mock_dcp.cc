@@ -22,7 +22,7 @@
 #include "item.h"
 #include "mock_dcp.h"
 
-protocol_binary_command dcp_last_op;
+protocol_binary_command dcp_last_op(PROTOCOL_BINARY_CMD_INVALID);
 uint8_t dcp_last_status;
 uint8_t dcp_last_nru;
 uint16_t dcp_last_vbucket;
@@ -41,6 +41,8 @@ uint64_t dcp_last_byseqno;
 uint64_t dcp_last_revseqno;
 std::string dcp_last_meta;
 std::string dcp_last_value;
+std::string dcp_last_old_value;
+uint64_t dcp_last_old_byseqno;
 std::string dcp_last_key;
 vbucket_state_t dcp_last_vbucket_state;
 
@@ -189,6 +191,40 @@ static ENGINE_ERROR_CODE mock_mutation(const void* cookie,
     return ENGINE_SUCCESS;
 }
 
+static ENGINE_ERROR_CODE mock_delta_mutation(const void* cookie,
+                                             uint32_t opaque,
+                                             item *itm,
+                                             const char* old_value,
+                                             size_t old_vallen,
+                                             uint64_t old_by_seqno,
+                                             uint16_t vbucket,
+                                             uint64_t by_seqno,
+                                             uint64_t rev_seqno,
+                                             uint32_t lock_time,
+                                             const char *meta, uint16_t nmeta,
+                                             uint8_t nru) {
+    (void) cookie;
+    clear_dcp_data();
+    const Item* item = reinterpret_cast<const Item*>(itm);
+    dcp_last_op = PROTOCOL_BINARY_CMD_DCP_DELTA_MUTATION;
+    dcp_last_opaque = opaque;
+    dcp_last_key.assign(item->getKey().c_str());
+    dcp_last_vbucket = vbucket;
+    dcp_last_byseqno = by_seqno;
+    dcp_last_revseqno = rev_seqno;
+    dcp_last_locktime = lock_time;
+    dcp_last_meta.assign(static_cast<const char*>(meta), nmeta);
+    dcp_last_value.assign(static_cast<const char*>(item->getData()),
+                          item->getNBytes());
+    dcp_last_old_value.assign(old_value, old_vallen);
+    dcp_last_old_byseqno = old_by_seqno;
+
+    dcp_last_nru = nru;
+    dcp_last_packet_size = 55 + dcp_last_key.length() +
+                           item->getNBytes() + nmeta;
+    return ENGINE_SUCCESS;
+}
+
 static ENGINE_ERROR_CODE mock_deletion(const void* cookie,
                                        uint32_t opaque,
                                        const void *key,
@@ -331,6 +367,7 @@ struct dcp_message_producers* get_dcp_producers() {
     producers->stream_end = mock_stream_end;
     producers->marker = mock_marker;
     producers->mutation = mock_mutation;
+    producers->delta_mutation = mock_delta_mutation;
     producers->deletion = mock_deletion;
     producers->expiration = mock_expiration;
     producers->flush = mock_flush;

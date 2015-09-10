@@ -25,6 +25,7 @@
 
 enum dcp_event_t {
     DCP_MUTATION,
+    DCP_DELTA_MUTATION,
     DCP_DELETION,
     DCP_EXPIRATION,
     DCP_FLUSH,
@@ -276,10 +277,9 @@ class MutationResponse : public DcpResponse {
 public:
     MutationResponse(queued_item item, uint32_t opaque,
                      ExtendedMetaData *e = NULL)
-        : DcpResponse(item.getItem()->isDeleted() ? DCP_DELETION
-                                                  : DCP_MUTATION,
-                      opaque),
-          item_(item), emd(e) {}
+        : DcpResponse(lookupEventType(item), opaque),
+          item_(item), emd(e) {
+    }
 
     ~MutationResponse() {
         if (emd) {
@@ -293,6 +293,15 @@ public:
 
     Item* getItemCopy() {
         return new Item(*item_.getItem());
+    }
+
+    value_t getAncestor() {
+        return item_.getAncestor();
+    }
+
+    // Return the Ancestor's seqno, or -1 if there is no ancestor.
+    uint64_t getAncestorBySeqno() {
+        return item_.getAncestorBySeqno();
     }
 
     uint16_t getVBucket() {
@@ -322,10 +331,24 @@ public:
         return emd;
     }
 
+    void debug_calculate_delta();
+
     static const uint32_t mutationBaseMsgBytes;
     static const uint32_t deletionBaseMsgBytes;
 
 private:
+
+    // Lookup the event type to use for the specified queued item.
+    static dcp_event_t lookupEventType(const queued_item& item) {
+        if (item.getItem()->isDeleted()) {
+            return DCP_DELETION;
+        } else if (item.hasAncestor()) {
+            return DCP_DELTA_MUTATION;
+        } else {
+            return DCP_MUTATION;
+        }
+    }
+
     queued_item item_;
     ExtendedMetaData *emd;
 };

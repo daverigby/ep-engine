@@ -4024,8 +4024,9 @@ static void dcp_stream(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1, const char *name,
     uint32_t opaque = 1;
     uint16_t nname = strlen(name);
 
-    check(h1->dcp.open(h, cookie, ++opaque, 0, DCP_OPEN_PRODUCER, (void*)name,
-                       nname) == ENGINE_SUCCESS,
+    checkeq(ENGINE_SUCCESS,
+            h1->dcp.open(h, cookie, ++opaque, 0, DCP_OPEN_PRODUCER, (void*)name,
+                         nname),
           "Failed dcp producer open connection.");
 
     check(h1->dcp.control(h, cookie, ++opaque, "connection_buffer_size", 22,
@@ -4138,6 +4139,7 @@ static void dcp_stream(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1, const char *name,
         } else {
             switch (dcp_last_op) {
                 case PROTOCOL_BINARY_CMD_DCP_MUTATION:
+                    std::cerr << "DCP_Mutation" << std::endl;
                     check(last_by_seqno < dcp_last_byseqno, "Expected bigger seqno");
                     last_by_seqno = dcp_last_byseqno;
                     num_mutations++;
@@ -4256,9 +4258,9 @@ static void dcp_stream(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1, const char *name,
             check(num_deletions <= exp_deletions, "Invalid number of deletes");
         }
     } else {
-        check(num_mutations == exp_mutations, "Invalid number of mutations");
-        check(num_deletions == exp_deletions, "Invalid number of deletes");
-        check(num_snapshot_markers == exp_markers,
+        checkeq(exp_mutations, num_mutations, "Invalid number of mutations");
+        checkeq(exp_deletions, num_deletions, "Invalid number of deletes");
+        checkeq(num_snapshot_markers, exp_markers,
                 "Didn't receive expected number of snapshot marker");
     }
 
@@ -10140,6 +10142,109 @@ static enum test_result test_dcp_invalid_snapshot_marker(ENGINE_HANDLE* h,
     return SUCCESS;
 }
 
+class MockDcpConsumer {
+public:
+    MockDcpConsumer(ENGINE_HANDLE* h_, ENGINE_HANDLE_V1* h1_,
+                    const void* cookie_)
+        : h(h_), h1(h1_),
+          opaque(0),
+          cookie(cookie_),
+          producers(get_dcp_producers()) {}
+
+    void open(const std::string& name) {
+        checkeq(ENGINE_SUCCESS,
+                h1->dcp.open(h, cookie, ++opaque, 0, DCP_OPEN_PRODUCER,
+                             name.c_str(), name.size()),
+              "MockDcpConsumer: failed to open DCP connection");
+    }
+
+    void stream_request(uint64_t vb_uuid, uint64_t start, uint64_t end) {
+        uint64_t rollback_seqno;
+        checkeq(ENGINE_SUCCESS,
+                h1->dcp.stream_req(h, cookie, 0, opaque, 0, 0, end,
+                                   vb_uuid, 0, 0, &rollback_seqno,
+                                   mock_dcp_add_failover_log),
+                "MockDcpConsumer: failed to initiate stream request");
+    }
+
+    ENGINE_ERROR_CODE step() {
+        ENGINE_ERROR_CODE err = h1->dcp.step(h, cookie, producers.get());
+        return err;
+    }
+
+private:
+    ENGINE_HANDLE* h;
+    ENGINE_HANDLE_V1* h1;
+    uint64_t opaque;
+    const void* cookie;
+    std::unique_ptr<dcp_message_producers> producers;
+};
+
+static test_result test_dcp_delta_mutation(ENGINE_HANDLE *h,
+                                            ENGINE_HANDLE_V1 *h1) {
+    // Reduce maximum items before checkpointing to minimum (10)
+    set_param(h, h1, protocol_binary_engine_param_checkpoint, "chk_max_items",
+              "10");
+    checkeq(PROTOCOL_BINARY_RESPONSE_SUCCESS, last_status,
+          "Failed to set checkpoint_max_item param");
+
+    const void *cookie = testHarness.create_cookie();
+
+    MockDcpConsumer consumer(h, h1, cookie);
+    consumer.open("delta_mutation");
+
+    uint64_t vb_uuid = get_ull_stat(h, h1, "vb_0:0:id", "failovers");
+    consumer.stream_request(vb_uuid, 0, ~0);
+
+    // Store a single key, but with a value which is appended to.
+    // Note: delta calculation has a minimum size (32 bytes).
+    std::string initial_value("The quick brown fox jumps over the laxy dog.");
+    std::string value = initial_value;
+    item *itm = NULL;
+    ENGINE_ERROR_CODE ret = store(h, h1, NULL, OPERATION_SET,
+                                  "delta", value.c_str(), &itm);
+    checkeq(ENGINE_SUCCESS, ret, "Failed to store item");
+    h1->release(h, NULL, itm);
+
+    wait_for_flusher_to_settle(h, h1);
+//    stop_persistence(h, h1);
+
+    wait_for_stat_to_be(h, h1, "vb_0:num_checkpoints", 2, "checkpoint");
+
+    checkeq(ENGINE_WANT_MORE, consumer.step(), "");
+    checkeq(PROTOCOL_BINARY_CMD_DCP_SNAPSHOT_MARKER, dcp_last_op, "");
+
+    checkeq(ENGINE_WANT_MORE, consumer.step(), "");
+    checkeq(PROTOCOL_BINARY_CMD_DCP_MUTATION, dcp_last_op, "");
+
+    checkeq(ENGINE_SUCCESS, consumer.step(), "");
+
+    // Store a second item (into the new checkpoint).
+    value += "X";
+    ret = store(h, h1, NULL, OPERATION_SET, "delta", value.c_str(), &itm);
+    checkeq(ENGINE_SUCCESS, ret, "Failed to store item");
+    h1->release(h, NULL, itm);
+
+    checkeq(ENGINE_WANT_MORE, consumer.step(), "");
+    checkeq(PROTOCOL_BINARY_CMD_DCP_SNAPSHOT_MARKER, dcp_last_op, "");
+
+    checkeq(ENGINE_WANT_MORE, consumer.step(), "");
+    checkeq(PROTOCOL_BINARY_CMD_DCP_DELTA_MUTATION, dcp_last_op, "");
+    checkeq(value, dcp_last_value, "");
+    checkeq(initial_value, dcp_last_old_value, "");
+    checkeq(uint64_t(1), dcp_last_old_byseqno, "");
+
+    checkeq(ENGINE_SUCCESS, consumer.step(), "");
+
+    // Sanity-check - two mutations therefore seqno == 2.
+    checkeq(2,
+            get_int_stat(h, h1, "vb_0:high_seqno", "vbucket-seqno"),
+            "Incorrect sequence number");
+
+    testHarness.destroy_cookie(cookie);
+    return SUCCESS;
+}
+
 extern "C" {
     static void wait_for_persistence_thread(void *arg) {
         struct handle_pair *hp = static_cast<handle_pair *>(arg);
@@ -14889,6 +14994,8 @@ BaseTestCase testsuite_testcases[] = {
                  test_setup, teardown, NULL, prepare, cleanup),
         TestCase("dcp invalid snapshot marker",
                  test_dcp_invalid_snapshot_marker,
+                 test_setup, teardown, NULL, prepare, cleanup),
+        TestCase("test_dcp_delta_mutation", test_dcp_delta_mutation,
                  test_setup, teardown, NULL, prepare, cleanup),
 
         TestCase("test set with item_eviction",

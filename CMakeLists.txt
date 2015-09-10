@@ -177,7 +177,7 @@ ADD_LIBRARY(ep SHARED
 
 SET_TARGET_PROPERTIES(ep PROPERTIES PREFIX "")
 TARGET_LINK_LIBRARIES(ep cJSON JSON_checker couchstore forestdb
-  dirutils platform ${LIBEVENT_LIBRARIES})
+  dirutils platform ${LIBEVENT_LIBRARIES} ${OPEN_VCDIFF_LIBRARIES})
 
 ADD_EXECUTABLE(ep-engine_atomic_ptr_test
   tests/module_tests/atomic_ptr_test.cc

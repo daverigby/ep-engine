@@ -823,7 +823,18 @@ ENGINE_ERROR_CODE EventuallyPersistentStore::set(Item &itm,
         }
     }
 
-    mutation_type_t mtype = vb->ht.unlocked_set(v, itm, itm.getCas(), true, false,
+    // Create a reference to the StoredValue's previous value (for calculating
+    // delta).
+    value_t prev_value;
+    uint64_t prev_seqno;
+    if (v != nullptr) {
+        prev_value.reset(v->getValue());
+        prev_seqno = v->getBySeqno();
+    }
+
+    mutation_type_t mtype = vb->ht.unlocked_set(v, itm, itm.getCas(),
+                                                /*allowExisting*/true,
+                                                /*hasMetaData*/false,
                                                 eviction_policy, nru,
                                                 maybeKeyExists);
 
@@ -850,7 +861,7 @@ ENGINE_ERROR_CODE EventuallyPersistentStore::set(Item &itm,
     case WAS_CLEAN:
         it.setCas(vb->nextHLCCas());
         v->setCas(it.getCas());
-        queueDirty(vb, *v, &lh, &seqno);
+        queueDirtyWithAncestor(vb, *v, &lh, &seqno, prev_value, prev_seqno);
         it.setBySeqno(seqno);
         break;
     case NEED_BG_FETCH:
@@ -963,10 +974,19 @@ ENGINE_ERROR_CODE EventuallyPersistentStore::replace(Item &itm,
             return ENGINE_KEY_ENOENT;
         }
 
+        value_t prev_value;
+        uint64_t prev_seqno;
         mutation_type_t mtype;
         if (eviction_policy == FULL_EVICTION && v->isTempInitialItem()) {
             mtype = NEED_BG_FETCH;
         } else {
+            // Create a reference to the StoredValue's previous value (for calculating
+            // delta).
+            if (v != nullptr) {
+                prev_value.reset(v->getValue());
+                prev_seqno = v->getBySeqno();
+            }
+
             mtype = vb->ht.unlocked_set(v, itm, 0, true, false, eviction_policy,
                                         0xff);
         }
@@ -992,7 +1012,8 @@ ENGINE_ERROR_CODE EventuallyPersistentStore::replace(Item &itm,
             case WAS_CLEAN:
                 it.setCas(vb->nextHLCCas());
                 v->setCas(it.getCas());
-                queueDirty(vb, *v, &lh, &seqno);
+                queueDirtyWithAncestor(vb, *v, &lh, &seqno, prev_value,
+                                       prev_seqno);
                 it.setBySeqno(seqno);
                 break;
             case NEED_BG_FETCH:
@@ -3379,13 +3400,30 @@ void EventuallyPersistentStore::queueDirty(RCPtr<VBucket> &vb,
                                            bool notifyReplicator,
                                            bool genBySeqno,
                                            bool setConflictMode) {
+    queueDirtyWithAncestor(vb, v, plh, seqno,
+                           /*ancestor*/nullptr, /*ancestor_byseqno*/0,
+                           tapBackfill,
+                           notifyReplicator, genBySeqno, setConflictMode);
+}
+
+void EventuallyPersistentStore::queueDirtyWithAncestor(RCPtr<VBucket> &vb,
+                                                       StoredValue& v,
+                                                       LockHolder *plh,
+                                                       uint64_t *seqno,
+                                                       const value_t ancestor_value,
+                                                       uint64_t ancestor_byseqno,
+                                                       bool tapBackfill,
+                                                       bool notifyReplicator,
+                                                       bool genBySeqno,
+                                                       bool setConflictMode) {
     if (vb) {
         if (setConflictMode && (v.getConflictResMode() != last_write_wins) &&
             vb->isTimeSyncEnabled()) {
             v.setConflictResMode(last_write_wins);
         }
 
-        queued_item qi(v.toItem(false, vb->getId()));
+        queued_item qi(v.toItem(false, vb->getId()),
+                       ancestor_value, ancestor_byseqno);
 
         bool rv = tapBackfill ? vb->queueBackfillItem(qi, genBySeqno) :
                                 vb->checkpointManager.queueDirty(vb, qi,

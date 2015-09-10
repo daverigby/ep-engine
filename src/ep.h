@@ -892,6 +892,7 @@ private:
      * @param plh the pointer to the hash table partition lock for the dirty item
      *        Note that the lock is released inside this function
      * @param seqno sequence number of the mutation
+     * @param old_value Pointer to the previous Value for this item (if known).
      * @param tapBackfill if the item is from backfill replication
      * @param notifyReplicator whether or not to notify the replicator
      * @param genBySeqno whether or not to generate sequence number
@@ -901,6 +902,25 @@ private:
                     StoredValue& v,
                     LockHolder *plh,
                     uint64_t *seqno,
+                    bool tapBackfill = false,
+                    bool notifyReplicator = true,
+                    bool genBySeqno = true,
+                    bool setConflictMode = true);
+
+    /* Queue an item for persistance and repliaction, with a known ancestor
+     * value.
+     *
+     * Similar to queueDirty(), except the ancestor Value of the Item is
+     * known (i.e. this is an update of an existing Item). This permits
+     * calculating the delta between the ancestor and 'new' Value, which can
+     * be used to optimize replication traffic.
+     */
+    void queueDirtyWithAncestor(RCPtr<VBucket> &vb,
+                    StoredValue& v,
+                    LockHolder *plh,
+                    uint64_t *seqno,
+                    const value_t ancestor_value,
+                    uint64_t ancestor_byseqno,
                     bool tapBackfill = false,
                     bool notifyReplicator = true,
                     bool genBySeqno = true,

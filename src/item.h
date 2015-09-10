@@ -730,17 +730,39 @@ public:
      */
     void setAncestor(QueuedItem& other) {
         ancestor_blob.reset(other.ancestor_blob);
+
+#if 0
+        // DEBUG
+        if (hasAncestor()) {
+            std::string val(ancestor_blob->to_s());
+            if (val.size() > 40) {
+                val = val.substr(0, 40) + " (cropped)...";
+            }
+            fprintf(stderr, "QueuedItem::setAncestor: key:%s new blob:'%s'\n",
+                    item->getKey().c_str(), val.c_str());
+        }
+#endif
     }
 
     bool hasAncestor() const {
         return ancestor_blob;
     }
 
+    // DEBUG
+    std::string delta_to_string() const {
+        if (!hasAncestor()) {
+            return "<none>";
+        } else {
+            return "\told: " + ancestor_blob->to_s() + "\n" +
+                            "\tnew: " + item->getValue()->to_s() + "\n";
+        }
+    }
+
 private:
     // The Item which has been queued into the checkpoint.
     SingleThreadedRCPtr<Item> item;
 
-    // If available, the blob from the ancestor of this item (i.e. the previus
+    // If available, the blob from the ancestor of this item (i.e. the previous
     // value for this particular key).
     value_t ancestor_blob;
 

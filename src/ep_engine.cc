@@ -204,6 +204,19 @@ extern "C" {
         return err_code;
     }
 
+    static ENGINE_ERROR_CODE EvpGetReplica(ENGINE_HANDLE* handle,
+                                           const void* cookie,
+                                           item** itm,
+                                           const void* key,
+                                           const int nkey,
+                                           uint16_t vbucket)
+    {
+        ENGINE_ERROR_CODE err_code = getHandle(handle)->getReplica(cookie, itm, key,
+                                                                   nkey, vbucket, true);
+        releaseHandle(handle);
+        return err_code;
+    }
+
     static ENGINE_ERROR_CODE EvpGetStats(ENGINE_HANDLE* handle,
                                          const void* cookie,
                                          const char* stat_key,
@@ -1482,7 +1495,7 @@ extern "C" {
                                         uint32_t opaque,
                                         uint32_t seqno,
                                         uint32_t flags,
-                                        void *name,
+                                        const void *name,
                                         uint16_t nname)
     {
         ENGINE_ERROR_CODE errCode;
@@ -1626,6 +1639,36 @@ extern "C" {
                                      vbucket, flags, datatype, lockTime,
                                      bySeqno, revSeqno, expiration,
                                      nru, meta, nmeta);
+        }
+        releaseHandle(handle);
+        return errCode;
+    }
+
+    static ENGINE_ERROR_CODE EvpDcpDeltaMutation(
+                    ENGINE_HANDLE* handle, const void* cookie, uint32_t opaque,
+                    const char *key, uint16_t nkey,
+                    const char *delta, uint32_t ndelta,
+                    uint64_t cas, uint16_t vbucket,
+                    uint32_t flags, uint8_t datatype,
+                    uint64_t bySeqno, uint64_t revSeqno,
+                    uint64_t ancestor_by_seqno, uint32_t expiration,
+                    uint32_t lockTime,
+                    const char* meta, uint16_t nmeta,
+                    uint8_t nru)
+    {
+        if (datatype > PROTOCOL_BINARY_DATATYPE_COMPRESSED_JSON) {
+            LOG(EXTENSION_LOG_WARNING, "Invalid value for datatype "
+                    " (DCPDeltaMutation)");
+            return ENGINE_EINVAL;
+        }
+        ENGINE_ERROR_CODE errCode = ENGINE_DISCONNECT;
+        ConnHandler* conn = getHandle(handle)->getConnHandler(cookie);
+        if (conn) {
+            errCode = conn->delta_mutation(opaque, key, nkey, delta, ndelta, cas,
+                                           vbucket, flags, datatype, lockTime,
+                                           bySeqno, revSeqno, ancestor_by_seqno,
+                                           expiration,
+                                           nru, meta, nmeta);
         }
         releaseHandle(handle);
         return errCode;
@@ -1945,6 +1988,7 @@ EventuallyPersistentEngine::EventuallyPersistentEngine(
     ENGINE_HANDLE_V1::remove = EvpItemDelete;
     ENGINE_HANDLE_V1::release = EvpItemRelease;
     ENGINE_HANDLE_V1::get = EvpGet;
+    ENGINE_HANDLE_V1::get_replica = EvpGetReplica;
     ENGINE_HANDLE_V1::get_stats = EvpGetStats;
     ENGINE_HANDLE_V1::reset_stats = EvpResetStats;
     ENGINE_HANDLE_V1::store = EvpStore;
@@ -1970,6 +2014,7 @@ EventuallyPersistentEngine::EventuallyPersistentEngine(
     ENGINE_HANDLE_V1::dcp.stream_end = EvpDcpStreamEnd;
     ENGINE_HANDLE_V1::dcp.snapshot_marker = EvpDcpSnapshotMarker;
     ENGINE_HANDLE_V1::dcp.mutation = EvpDcpMutation;
+    ENGINE_HANDLE_V1::dcp.delta_mutation = EvpDcpDeltaMutation;
     ENGINE_HANDLE_V1::dcp.deletion = EvpDcpDeletion;
     ENGINE_HANDLE_V1::dcp.expiration = EvpDcpExpiration;
     ENGINE_HANDLE_V1::dcp.flush = EvpDcpFlush;
@@ -4524,6 +4569,33 @@ void EventuallyPersistentEngine::runDefragmenterTask(void) {
     epstore->runDefragmenterTask();
 }
 
+ENGINE_ERROR_CODE EventuallyPersistentEngine::getReplica(const void* cookie,
+                                                         item** itm,
+                                                         const void* key,
+                                                         const int nkey,
+                                                         uint16_t vbucket,
+                                                         bool track_stat)
+{
+    BlockTimer timer(&stats.getCmdHisto);
+    std::string k(static_cast<const char*>(key), nkey);
+
+    GetValue gv(epstore->getReplica(k, vbucket, cookie, serverApi->core));
+    ENGINE_ERROR_CODE ret = gv.getStatus();
+
+    if (ret == ENGINE_SUCCESS) {
+        *itm = gv.getValue();
+        if (track_stat) {
+            ++stats.numOpsGet;
+        }
+    } else if (ret == ENGINE_KEY_ENOENT || ret == ENGINE_NOT_MY_VBUCKET) {
+        if (isDegradedMode()) {
+            return ENGINE_TMPFAIL;
+        }
+    }
+
+    return ret;
+}
+
 ENGINE_ERROR_CODE EventuallyPersistentEngine::getStats(const void* cookie,
                                                        const char* stat_key,
                                                        int nkey,
@@ -6148,7 +6220,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::dcpOpen(const void* cookie,
                                                        uint32_t opaque,
                                                        uint32_t seqno,
                                                        uint32_t flags,
-                                                       void *stream_name,
+                                                       const void *stream_name,
                                                        uint16_t nname)
 {
     (void) opaque;

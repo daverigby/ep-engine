@@ -35,3 +35,36 @@ const uint32_t SetVBucketState::baseMsgBytes = 25;
 const uint32_t SnapshotMarker::baseMsgBytes = 44;
 const uint32_t MutationResponse::mutationBaseMsgBytes = 55;
 const uint32_t MutationResponse::deletionBaseMsgBytes = 42;
+
+#include <google/vcencoder.h>
+
+
+#include <iomanip>
+
+void MutationResponse::debug_calculate_delta() {
+    if (item_.hasAncestor()) {
+        std::string delta;
+        Blob& ancestor = *item_.getAncestor();
+        open_vcdiff::VCDiffEncoder encoder(ancestor.getBlob(),
+                                           ancestor.length());
+        encoder.Encode(item_.getItem()->getBlob(),
+                       item_.getItem()->getValue()->length(),
+                       &delta);
+        std::stringstream ss;
+        for (char byte : delta) {
+            ss << std::hex << std::setw(2) << std::setfill('0') << uint16_t(uint8_t(byte));
+            ss << ' ';
+        }
+        fprintf(stderr, "For key: %s\n"
+                        "\told:%s (len:%d)\n"
+                        "\tnew:%s (len:%d)\n"
+                "\tDelta:'%s' length:%d\n",
+                item_.getItem()->getKey().c_str(),
+                ancestor.to_s().c_str(), ancestor.to_s().size(),
+                item_.getItem()->getValue()->to_s().c_str(),
+                item_.getItem()->getValue()->to_s().size(),
+                ss.str().c_str(),
+                delta.size());
+    }
+}
+

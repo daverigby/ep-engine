@@ -197,6 +197,20 @@ ENGINE_ERROR_CODE ConnHandler::mutation(uint32_t opaque, const void* key,
     return ENGINE_DISCONNECT;
 }
 
+ENGINE_ERROR_CODE ConnHandler::delta_mutation(uint32_t opaque, const char* key,
+                                              uint16_t nkey, const char* delta,
+                                              uint32_t ndelta, uint64_t cas,
+                                              uint16_t vbucket, uint32_t flags,
+                                              uint8_t datatype, uint32_t locktime,
+                                              uint64_t bySeqno, uint64_t revSeqno,
+                                              uint64_t ancestor_byseqno,
+                                              uint32_t exptime, uint8_t nru,
+                                              const char* meta, uint16_t nmeta) {
+    LOG(EXTENSION_LOG_WARNING, "%s Disconnecting - This connection doesn't "
+        "support the delta mutation API", logHeader());
+    return ENGINE_DISCONNECT;
+}
+
 ENGINE_ERROR_CODE ConnHandler::deletion(uint32_t opaque, const void* key,
                                         uint16_t nkey, uint64_t cas,
                                         uint16_t vbucket, uint64_t bySeqno,
