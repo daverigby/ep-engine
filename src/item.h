@@ -693,15 +693,47 @@ class QueuedItem {
 public:
     QueuedItem()
         : item(nullptr),
-          ancestor_blob(nullptr) {}
+          ancestor_blob(nullptr),
+          ancestor_byseqno(~0) {}
 
     QueuedItem(SingleThreadedRCPtr<Item> item_)
         : item(item_),
-          ancestor_blob(nullptr) {}
+          ancestor_blob(nullptr),
+          ancestor_byseqno(~0) {}
+
+    QueuedItem(SingleThreadedRCPtr<Item> item_, value_t ancestor_,
+               uint64_t ancester_by_seqno_)
+        : item(item_),
+          ancestor_blob(ancestor_),
+          ancestor_byseqno(ancester_by_seqno_) {
+
+        // Maintain invariant that byseqno is valid iff ancestor_blob is non-NULL.
+        if (!ancestor_blob) {
+            ancestor_byseqno = ~0;
+        }
+    }
 
     /* Returns a pointer to the underlying Item in the queue. */
     SingleThreadedRCPtr<Item> getItem() const {
         return item;
+    }
+
+    value_t getAncestor() const {
+        return ancestor_blob;
+    }
+
+    uint64_t getAncestorBySeqno() const {
+        return ancestor_byseqno;
+    }
+
+    /* Set this QueuedItem's ancestor to the one from other.
+     */
+    void setAncestor(QueuedItem& other) {
+        ancestor_blob.reset(other.ancestor_blob);
+    }
+
+    bool hasAncestor() const {
+        return ancestor_blob;
     }
 
 private:
@@ -710,7 +742,10 @@ private:
 
     // If available, the blob from the ancestor of this item (i.e. the previus
     // value for this particular key).
-    SingleThreadedRCPtr<Blob> ancestor_blob;
+    value_t ancestor_blob;
+
+    // The by_seqno of the ancestor, or ~0 if there is no ancestor.
+    uint64_t ancestor_byseqno;
 };
 
 typedef QueuedItem queued_item;
