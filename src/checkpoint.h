@@ -265,7 +265,7 @@ public:
      * @param bySeqno the by sequence number assigned to this mutation
      * @return a result indicating the status of the operation.
      */
-    queue_dirty_t queueDirty(const queued_item &qi,
+    queue_dirty_t queueDirty(queued_item &qi,
                              CheckpointManager *checkpointManager);
 
     uint64_t getLowSeqno() {

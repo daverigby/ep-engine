@@ -102,7 +102,7 @@ bool Checkpoint::keyExists(const std::string &key) {
     return keyIndex.find(key) != keyIndex.end();
 }
 
-queue_dirty_t Checkpoint::queueDirty(const queued_item &qi,
+queue_dirty_t Checkpoint::queueDirty(queued_item &qi,
                                      CheckpointManager *checkpointManager) {
     cb_assert(checkpointState == CHECKPOINT_OPEN);
     queue_dirty_t rv;
@@ -140,6 +140,10 @@ queue_dirty_t Checkpoint::queueDirty(const queued_item &qi,
                 }
             }
         }
+
+        // Ancestor tracking: Transfer the ancestor from the (about to be
+        // deleted) old item to the new one.
+        qi.setAncestor(*currPos);
 
         toWrite.push_back(qi);
         // Remove the existing item for the same key from the list.
