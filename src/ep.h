@@ -580,8 +580,9 @@ public:
     size_t visit(std::shared_ptr<VBucketVisitor> visitor, const char *lbl,
                task_type_t taskGroup, const Priority &prio,
                double sleepTime=0) {
-        return ExecutorPool::get()->schedule(new VBCBAdaptor(this, visitor,
-                                             lbl, prio, sleepTime), taskGroup);
+        return ExecutorPool::get()->schedule(
+                ExTask(new VBCBAdaptor(this, visitor, lbl, prio, sleepTime)),
+                taskGroup);
     }
 
     /**

@@ -103,7 +103,8 @@ DcpConsumer::DcpConsumer(EventuallyPersistentEngine &engine, const void *cookie,
     pendingEnableValueCompression = config.isDcpValueCompressionEnabled();
     pendingSupportCursorDropping = true;
 
-    ExTask task = new Processer(&engine, this, Priority::PendingOpsPriority, 1);
+    ExTask task = ExTask(
+            new Processer(&engine, this, Priority::PendingOpsPriority, 1));
     processerTaskId = ExecutorPool::get()->schedule(task, NONIO_TASK_IDX);
 }
 
@@ -639,9 +640,9 @@ ENGINE_ERROR_CODE DcpConsumer::handleResponse(
             LOG(EXTENSION_LOG_NOTICE, "%s (vb %d) Received rollback request "
                 "to rollback seq no. %" PRIu64, logHeader(), vbid, rollbackSeqno);
 
-            ExTask task = new RollbackTask(&engine_, opaque, vbid,
-                                           rollbackSeqno, this,
-                                           Priority::TapBgFetcherPriority);
+            ExTask task = ExTask(
+                    new RollbackTask(&engine_, opaque, vbid, rollbackSeqno,
+                                     this, Priority::TapBgFetcherPriority));
             ExecutorPool::get()->schedule(task, WRITER_TASK_IDX);
             return ENGINE_SUCCESS;
         }

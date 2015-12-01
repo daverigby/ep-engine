@@ -253,9 +253,10 @@ bool AccessScanner::run() {
                 std::shared_ptr<ItemAccessVisitor> pv(new ItemAccessVisitor(store,
                                                  stats, i, available, *this));
                 std::shared_ptr<VBucketVisitor> vbv(pv);
-                ExTask task = new VBucketVisitorTask(&store, vbv, i,
-                                                     "Item Access Scanner",
-                                                     sleepTime, true);
+                ExTask task = ExTask(
+                        new VBucketVisitorTask(&store, vbv, i,
+                                               "Item Access Scanner", sleepTime,
+                                               true));
                 ExecutorPool::get()->schedule(task, AUXIO_TASK_IDX);
             }
         }

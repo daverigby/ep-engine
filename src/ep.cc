@@ -426,7 +426,7 @@ bool EventuallyPersistentStore::initialize() {
         return false;
     }
 
-    itmpTask = new ItemPager(&engine, stats);
+    itmpTask = ExTask(new ItemPager(&engine, stats));
     ExecutorPool::get()->schedule(itmpTask, NONIO_TASK_IDX);
 
     LockHolder elh(expiryPager.mutex);
@@ -442,25 +442,26 @@ bool EventuallyPersistentStore::initialize() {
     config.addValueChangedListener("exp_pager_initial_run_time",
                                    new EPStoreValueChangeListener(*this));
 
-    ExTask htrTask = new HashtableResizerTask(this, 10);
+    ExTask htrTask = ExTask(new HashtableResizerTask(this, 10));
     ExecutorPool::get()->schedule(htrTask, NONIO_TASK_IDX);
 
     size_t checkpointRemoverInterval = config.getChkRemoverStime();
-    chkTask = new ClosedUnrefCheckpointRemoverTask(&engine, stats,
-                                                   checkpointRemoverInterval);
+    chkTask = ExTask(
+            new ClosedUnrefCheckpointRemoverTask(&engine, stats,
+                                                 checkpointRemoverInterval));
     ExecutorPool::get()->schedule(chkTask, NONIO_TASK_IDX);
 
-    ExTask vbSnapshotTask = new DaemonVBSnapshotTask(&engine);
+    ExTask vbSnapshotTask = ExTask(new DaemonVBSnapshotTask(&engine));
     ExecutorPool::get()->schedule(vbSnapshotTask, WRITER_TASK_IDX);
 
-    ExTask workloadMonitorTask = new WorkLoadMonitor(&engine, false);
+    ExTask workloadMonitorTask = ExTask(new WorkLoadMonitor(&engine, false));
     ExecutorPool::get()->schedule(workloadMonitorTask, NONIO_TASK_IDX);
 
 #if HAVE_JEMALLOC
     /* Only create the defragmenter task if we have an underlying memory
      * allocator which can facilitate defragmenting memory.
      */
-    defragmenterTask = new DefragmenterTask(&engine, stats);
+    defragmenterTask = ExTask(new DefragmenterTask(&engine, stats));
     ExecutorPool::get()->schedule(defragmenterTask, NONIO_TASK_IDX);
 #endif
 
@@ -1315,7 +1316,7 @@ ENGINE_ERROR_CODE EventuallyPersistentStore::setVBucketState(uint16_t vbid,
         lh.unlock();
         if (oldstate == vbucket_state_pending &&
             to == vbucket_state_active) {
-            ExTask notifyTask = new PendingOpsNotification(engine, vb);
+            ExTask notifyTask = ExTask(new PendingOpsNotification(engine, vb));
             ExecutorPool::get()->schedule(notifyTask, NONIO_TASK_IDX);
         }
         scheduleVBStatePersist(Priority::VBucketPersistLowPriority, vbid);
@@ -1358,7 +1359,7 @@ bool EventuallyPersistentStore::scheduleVBSnapshot(const Priority &p) {
         for (size_t i = 0; i < vbMap.numShards; ++i) {
             shard = vbMap.shards[i];
             if (shard->setHighPriorityVbSnapshotFlag(true)) {
-                ExTask task = new VBSnapshotTask(&engine, p, i, true);
+                ExTask task = ExTask(new VBSnapshotTask(&engine, p, i, true));
                 ExecutorPool::get()->schedule(task, WRITER_TASK_IDX);
             }
         }
@@ -1366,7 +1367,7 @@ bool EventuallyPersistentStore::scheduleVBSnapshot(const Priority &p) {
         for (size_t i = 0; i < vbMap.numShards; ++i) {
             shard = vbMap.shards[i];
             if (shard->setLowPriorityVbSnapshotFlag(true)) {
-                ExTask task = new VBSnapshotTask(&engine, p, i, true);
+                ExTask task = ExTask(new VBSnapshotTask(&engine, p, i, true));
                 ExecutorPool::get()->schedule(task, WRITER_TASK_IDX);
             }
         }
@@ -1383,12 +1384,12 @@ void EventuallyPersistentStore::scheduleVBSnapshot(const Priority &p,
     KVShard *shard = vbMap.shards[shardId];
     if (p == Priority::VBucketPersistHighPriority) {
         if (force || shard->setHighPriorityVbSnapshotFlag(true)) {
-            ExTask task = new VBSnapshotTask(&engine, p, shardId, true);
+            ExTask task = ExTask(new VBSnapshotTask(&engine, p, shardId, true));
             ExecutorPool::get()->schedule(task, WRITER_TASK_IDX);
         }
     } else {
         if (force || shard->setLowPriorityVbSnapshotFlag(true)) {
-            ExTask task = new VBSnapshotTask(&engine, p, shardId, true);
+            ExTask task = ExTask(new VBSnapshotTask(&engine, p, shardId, true));
             ExecutorPool::get()->schedule(task, WRITER_TASK_IDX);
         }
     }
@@ -1400,7 +1401,8 @@ void EventuallyPersistentStore::scheduleVBStatePersist(const Priority &priority,
     bool inverse = false;
     if (force ||
         schedule_vbstate_persist[vbid].compare_exchange_strong(inverse, true)) {
-        ExTask task = new VBStatePersistTask(&engine, priority, vbid, true);
+        ExTask task = ExTask(
+                new VBStatePersistTask(&engine, priority, vbid, true));
         ExecutorPool::get()->schedule(task, WRITER_TASK_IDX);
     }
 }
@@ -1438,12 +1440,13 @@ bool EventuallyPersistentStore::completeVBucketDeletion(uint16_t vbid,
 void EventuallyPersistentStore::scheduleVBDeletion(RCPtr<VBucket> &vb,
                                                    const void* cookie,
                                                    double delay) {
-    ExTask delTask = new VBucketMemoryDeletionTask(engine, vb, delay);
+    ExTask delTask = ExTask(new VBucketMemoryDeletionTask(engine, vb, delay));
     ExecutorPool::get()->schedule(delTask, NONIO_TASK_IDX);
 
     if (vbMap.setBucketDeletion(vb->getId(), true)) {
-        ExTask task = new VBDeleteTask(&engine, vb->getId(), cookie,
-                                       Priority::VBucketDeletionPriority);
+        ExTask task = ExTask(
+                new VBDeleteTask(&engine, vb->getId(), cookie,
+                                 Priority::VBucketDeletionPriority));
         ExecutorPool::get()->schedule(task, WRITER_TASK_IDX);
     }
 }
@@ -1498,8 +1501,8 @@ ENGINE_ERROR_CODE EventuallyPersistentStore::compactDB(compaction_ctx c,
     }
 
     LockHolder lh(compactionLock);
-    ExTask task = new CompactTask(&engine, Priority::CompactorPriority,
-                                  c, cookie);
+    ExTask task = ExTask(
+            new CompactTask(&engine, Priority::CompactorPriority, c, cookie));
     compactionTasks.push_back(std::make_pair(c.db_file_id, task));
     if (compactionTasks.size() > 1) {
         if ((stats.diskQueueSize > compactionWriteQueueCap &&
@@ -2031,10 +2034,10 @@ void EventuallyPersistentStore::bgFetch(const std::string &key,
         stats.maxRemainingBgJobs = std::max(stats.maxRemainingBgJobs,
                                             bgFetchQueue.load());
         ExecutorPool* iom = ExecutorPool::get();
-        ExTask task = new BGFetchTask(&engine, key, vbucket, cookie,
-                                      isMeta,
-                                      Priority::BgFetcherGetMetaPriority,
-                                      bgFetchDelay, false);
+        ExTask task = ExTask(
+                new BGFetchTask(&engine, key, vbucket, cookie, isMeta,
+                                Priority::BgFetcherGetMetaPriority,
+                                bgFetchDelay, false));
         iom->schedule(task, READER_TASK_IDX);
         LOG(EXTENSION_LOG_DEBUG, "Queued a background fetch, now at %" PRIu64,
             uint64_t(bgFetchQueue.load()));
@@ -2471,10 +2474,11 @@ EventuallyPersistentStore::statsVKey(const std::string &key,
         }
         bgFetchQueue++;
         ExecutorPool* iom = ExecutorPool::get();
-        ExTask task = new VKeyStatBGFetchTask(&engine, key, vbucket,
-                                           v->getBySeqno(), cookie,
-                                           Priority::VKeyStatBgFetcherPriority,
-                                           bgFetchDelay, false);
+        ExTask task = ExTask(
+                new VKeyStatBGFetchTask(&engine, key, vbucket, v->getBySeqno(),
+                                        cookie,
+                                        Priority::VKeyStatBgFetcherPriority,
+                                        bgFetchDelay, false));
         iom->schedule(task, READER_TASK_IDX);
         return ENGINE_EWOULDBLOCK;
     } else {
@@ -2496,10 +2500,11 @@ EventuallyPersistentStore::statsVKey(const std::string &key,
                 {
                     ++bgFetchQueue;
                     ExecutorPool* iom = ExecutorPool::get();
-                    ExTask task = new VKeyStatBGFetchTask(&engine, key,
-                                                          vbucket, -1, cookie,
-                                           Priority::VKeyStatBgFetcherPriority,
-                                                          bgFetchDelay, false);
+                ExTask task = ExTask(
+                        new VKeyStatBGFetchTask(
+                                &engine, key, vbucket, -1, cookie,
+                                Priority::VKeyStatBgFetcherPriority,
+                                bgFetchDelay, false));
                     iom->schedule(task, READER_TASK_IDX);
                 }
             }
@@ -3242,7 +3247,8 @@ bool EventuallyPersistentStore::scheduleFlushAllTask(const void* cookie,
     if (diskFlushAll.compare_exchange_strong(inverse, true)) {
         flushAllTaskCtx.cookie = cookie;
         flushAllTaskCtx.delayFlushAll.compare_exchange_strong(inverse, true);
-        ExTask task = new FlushAllTask(&engine, static_cast<double>(when));
+        ExTask task = ExTask(
+                new FlushAllTask(&engine, static_cast<double>(when)));
         ExecutorPool::get()->schedule(task, NONIO_TASK_IDX);
         return true;
     } else {
@@ -3573,7 +3579,8 @@ void EventuallyPersistentStore::warmupCompleted() {
     // right after warmup. Subsequent snapshot tasks will be scheduled every
     // 60 sec by default.
     ExecutorPool *iom = ExecutorPool::get();
-    ExTask task = new StatSnap(&engine, Priority::StatSnapPriority, 0, false);
+    ExTask task = ExTask(
+            new StatSnap(&engine, Priority::StatSnapPriority, 0, false));
     statsSnapshotTaskId = iom->schedule(task, WRITER_TASK_IDX);
 }
 
@@ -3646,8 +3653,8 @@ void EventuallyPersistentStore::setExpiryPagerSleeptime(size_t val) {
 
     expiryPager.sleeptime = val;
     if (expiryPager.enabled) {
-        ExTask expTask = new ExpiredItemPager(&engine, stats,
-                                              expiryPager.sleeptime);
+        ExTask expTask = ExTask(
+                new ExpiredItemPager(&engine, stats, expiryPager.sleeptime));
         expiryPager.task = ExecutorPool::get()->schedule(expTask, NONIO_TASK_IDX);
     } else {
         LOG(EXTENSION_LOG_DEBUG, "Expiry pager disabled, "
@@ -3660,9 +3667,9 @@ void EventuallyPersistentStore::setExpiryPagerTasktime(ssize_t val) {
     LockHolder lh(expiryPager.mutex);
     if (expiryPager.enabled) {
         ExecutorPool::get()->cancel(expiryPager.task);
-        ExTask expTask = new ExpiredItemPager(&engine, stats,
-                                              expiryPager.sleeptime,
-                                              val);
+        ExTask expTask = ExTask(
+                new ExpiredItemPager(&engine, stats, expiryPager.sleeptime,
+                                     val));
         expiryPager.task = ExecutorPool::get()->schedule(expTask,
                                                          NONIO_TASK_IDX);
     } else {
@@ -3678,8 +3685,8 @@ void EventuallyPersistentStore::enableExpiryPager() {
         expiryPager.enabled = true;
 
         ExecutorPool::get()->cancel(expiryPager.task);
-        ExTask expTask = new ExpiredItemPager(&engine, stats,
-                                              expiryPager.sleeptime);
+        ExTask expTask = ExTask(
+                new ExpiredItemPager(&engine, stats, expiryPager.sleeptime));
         expiryPager.task = ExecutorPool::get()->schedule(expTask,
                                                          NONIO_TASK_IDX);
     } else {
@@ -3709,9 +3716,10 @@ void EventuallyPersistentStore::enableAccessScannerTask() {
         size_t alogSleepTime = engine.getConfiguration().getAlogSleepTime();
         accessScanner.sleeptime = alogSleepTime * 60;
         if (accessScanner.sleeptime != 0) {
-            ExTask task = new AccessScanner(*this, stats,
-                                            Priority::AccessScannerPriority,
-                                            accessScanner.sleeptime, true);
+            ExTask task = ExTask(
+                    new AccessScanner(*this, stats,
+                                      Priority::AccessScannerPriority,
+                                      accessScanner.sleeptime, true));
             accessScanner.task = ExecutorPool::get()->schedule(task,
                                                                AUXIO_TASK_IDX);
         } else {
@@ -3746,10 +3754,10 @@ void EventuallyPersistentStore::setAccessScannerSleeptime(size_t val,
         // store sleeptime in seconds
         accessScanner.sleeptime = val * 60;
         if (accessScanner.sleeptime != 0) {
-            ExTask task = new AccessScanner(*this, stats,
-                                            Priority::AccessScannerPriority,
-                                            accessScanner.sleeptime,
-                                            useStartTime);
+            ExTask task = ExTask(
+                    new AccessScanner(*this, stats,
+                                      Priority::AccessScannerPriority,
+                                      accessScanner.sleeptime, useStartTime));
             accessScanner.task = ExecutorPool::get()->schedule(task,
                                                                AUXIO_TASK_IDX);
         }
@@ -3763,9 +3771,10 @@ void EventuallyPersistentStore::resetAccessScannerStartTime() {
         if (accessScanner.sleeptime != 0) {
             ExecutorPool::get()->cancel(accessScanner.task);
             // re-schedule task according to the new task start hour
-            ExTask task = new AccessScanner(*this, stats,
-                                            Priority::AccessScannerPriority,
-                                            accessScanner.sleeptime, true);
+            ExTask task = ExTask(
+                    new AccessScanner(*this, stats,
+                                      Priority::AccessScannerPriority,
+                                      accessScanner.sleeptime, true));
             accessScanner.task = ExecutorPool::get()->schedule(task,
                                                                AUXIO_TASK_IDX);
         }

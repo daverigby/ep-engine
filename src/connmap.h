@@ -181,11 +181,11 @@ public:
 
     virtual void removeVBConnections(connection_t &conn);
 
-    void addVBConnByVBId(connection_t &conn, int16_t vbid);
+    void addVBConnByVBId(const connection_t &conn, int16_t vbid);
 
-    void removeVBConnByVBId_UNLOCKED(connection_t &conn, int16_t vbid);
+    void removeVBConnByVBId_UNLOCKED(const connection_t &conn, int16_t vbid);
 
-    void removeVBConnByVBId(connection_t &conn, int16_t vbid);
+    void removeVBConnByVBId(const connection_t &conn, int16_t vbid);
 
     /**
      * Notify a given paused Producer.
@@ -395,7 +395,7 @@ public:
             }
             tapop.perform(tp, arg);
             lh.unlock();
-            notifyPausedConnection(tp, false);
+            notifyPausedConnection(tc, false);
         } else {
             ret = false;
         }

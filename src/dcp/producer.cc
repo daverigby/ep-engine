@@ -210,15 +210,16 @@ ENGINE_ERROR_CODE DcpProducer::streamRequest(uint32_t flags,
     }
 
     if (notifyOnly) {
-        streams[vbucket] = new NotifierStream(&engine_, this, getName(), flags,
-                                              opaque, vbucket, notifySeqno,
-                                              end_seqno, vbucket_uuid,
-                                              snap_start_seqno, snap_end_seqno);
+        streams[vbucket] = stream_t(
+                new NotifierStream(&engine_, this, getName(), flags, opaque,
+                                   vbucket, notifySeqno, end_seqno,
+                                   vbucket_uuid, snap_start_seqno,
+                                   snap_end_seqno));
     } else {
-        streams[vbucket] = new ActiveStream(&engine_, this, getName(), flags,
-                                            opaque, vbucket, start_seqno,
-                                            end_seqno, vbucket_uuid,
-                                            snap_start_seqno, snap_end_seqno);
+        streams[vbucket] = stream_t(
+                new ActiveStream(&engine_, this, getName(), flags, opaque,
+                                 vbucket, start_seqno, end_seqno, vbucket_uuid,
+                                 snap_start_seqno, snap_end_seqno));
         static_cast<ActiveStream*>(streams[vbucket].get())->setActive();
     }
 

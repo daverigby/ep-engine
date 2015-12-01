@@ -3042,8 +3042,8 @@ void EventuallyPersistentEngine::queueBackfill(const VBucketFilter
                                                              &backfillVBFilter,
                                                Producer *tc)
 {
-    ExTask backfillTask = new BackfillTask(this, *tapConnMap, tc,
-                                           backfillVBFilter);
+    ExTask backfillTask = ExTask(
+            new BackfillTask(this, *tapConnMap, tc, backfillVBFilter));
     ExecutorPool::get()->schedule(backfillTask, NONIO_TASK_IDX);
 }
 
@@ -3883,7 +3883,8 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doCheckpointStats(
     if (nkey == 10) {
         void* es = getEngineSpecific(cookie);
         if (es == NULL) {
-            ExTask task = new StatCheckpointTask(this, cookie, add_stat);
+            ExTask task = ExTask(
+                    new StatCheckpointTask(this, cookie, add_stat));
             ExecutorPool::get()->schedule(task, NONIO_TASK_IDX);
             storeEngineSpecific(cookie, this);
             return ENGINE_EWOULDBLOCK;
@@ -6150,9 +6151,9 @@ EventuallyPersistentEngine::getAllKeys(const void* cookie,
     char *keyptr = (char*)(request->bytes + sizeof(request->bytes) + extlen);
     std::string start_key(keyptr, keylen);
 
-    ExTask task = new FetchAllKeysTask(this, cookie, response, start_key,
-                                       vbucket, count,
-                                       Priority::BgFetcherPriority);
+    ExTask task = ExTask(
+            new FetchAllKeysTask(this, cookie, response, start_key, vbucket,
+                                 count, Priority::BgFetcherPriority));
     ExecutorPool::get()->schedule(task, READER_TASK_IDX);
     return ENGINE_EWOULDBLOCK;
 }

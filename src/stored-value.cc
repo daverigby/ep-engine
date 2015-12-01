@@ -44,7 +44,7 @@ bool StoredValue::ejectValue(HashTable &ht, item_eviction_policy_t policy) {
     if (eligibleForEviction(policy)) {
         reduceCacheSize(ht, value->length());
         markNotResident();
-        value = NULL;
+        value.reset();
         return true;
     }
     return false;
@@ -774,8 +774,7 @@ Item* StoredValue::toValuelessItem(uint16_t vbucket) const {
 void StoredValue::reallocate() {
     // Allocate a new Blob for this stored value; copy the existing Blob to
     // the new one and free the old.
-    value_t new_val(Blob::Copy(*value));
-    value.reset(new_val);
+    value.reset(Blob::Copy(*value));
 }
 
 Item *HashTable::getRandomKeyFromSlot(int slot) {

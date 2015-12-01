@@ -546,8 +546,8 @@ public:
         metaData.cas = ncas;
     }
 
-    void setValue(const value_t &v) {
-        value.reset(v);
+    void setValue(value_t &v) {
+        value.swap(v);
     }
 
     void setFlags(uint32_t f) {

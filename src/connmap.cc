@@ -99,7 +99,8 @@ private:
 void ConnNotifier::start() {
     bool inverse = false;
     pendingNotification.compare_exchange_strong(inverse, true);
-    ExTask connotifyTask = new ConnNotifierCallback(&connMap.getEngine(), this);
+    ExTask connotifyTask = ExTask(
+            new ConnNotifierCallback(&connMap.getEngine(), this));
     task = ExecutorPool::get()->schedule(connotifyTask, NONIO_TASK_IDX);
 }
 
@@ -191,7 +192,7 @@ ConnMap::ConnMap(EventuallyPersistentEngine &theEngine)
 void ConnMap::initialize(conn_notifier_type ntype) {
     connNotifier_ = new ConnNotifier(ntype, *this);
     connNotifier_->start();
-    ExTask connMgr = new ConnManager(&engine, this);
+    ExTask connMgr = ExTask(new ConnManager(&engine, this));
     ExecutorPool::get()->schedule(connMgr, NONIO_TASK_IDX);
 }
 
@@ -314,7 +315,7 @@ void ConnMap::removeVBConnections(connection_t &conn) {
     }
 }
 
-void ConnMap::addVBConnByVBId(connection_t &conn, int16_t vbid) {
+void ConnMap::addVBConnByVBId(const connection_t& conn, int16_t vbid) {
     if (!conn.get()) {
         return;
     }
@@ -325,7 +326,7 @@ void ConnMap::addVBConnByVBId(connection_t &conn, int16_t vbid) {
     vb_conns.push_back(conn);
 }
 
-void ConnMap::removeVBConnByVBId_UNLOCKED(connection_t &conn, int16_t vbid) {
+void ConnMap::removeVBConnByVBId_UNLOCKED(const connection_t &conn, int16_t vbid) {
     if (!conn.get()) {
         return;
     }
@@ -340,7 +341,7 @@ void ConnMap::removeVBConnByVBId_UNLOCKED(connection_t &conn, int16_t vbid) {
     }
 }
 
-void ConnMap::removeVBConnByVBId(connection_t &conn, int16_t vbid) {
+void ConnMap::removeVBConnByVBId(const connection_t& conn, int16_t vbid) {
     size_t lock_num = vbid % vbConnLockNum;
     SpinLockHolder lh (&vbConnLocks[lock_num]);
     removeVBConnByVBId_UNLOCKED(conn, vbid);
@@ -532,7 +533,8 @@ void TapConnMap::manageConnections() {
         (*ii)->releaseReference();
         TapProducer *tp = dynamic_cast<TapProducer*>((*ii).get());
         if (tp) {
-            ExTask reapTask = new ConnectionReaperCallback(engine, *this, *ii);
+            ExTask reapTask = ExTask(
+                    new ConnectionReaperCallback(engine, *this, *ii));
             ExecutorPool::get()->schedule(reapTask, NONIO_TASK_IDX);
         }
     }
@@ -572,7 +574,7 @@ bool TapConnMap::setEvents(const std::string &name, std::list<queued_item> *q) {
         found = true;
         tp->appendQueue(q);
         lh.unlock();
-        notifyPausedConnection(tp, false);
+        notifyPausedConnection(tc, false);
     }
 
     return found;
@@ -632,7 +634,7 @@ void TapConnMap::resetReplicaChain() {
         // TAP producer sends INITIAL_VBUCKET_STREAM messages to the destination to reset
         // replica vbuckets, and then backfills items to the destination.
         tp->scheduleBackfill(vblist);
-        notifyPausedConnection(tp, true);
+        notifyPausedConnection(tc, true);
     }
 }
 
@@ -679,7 +681,7 @@ void TapConnMap::scheduleBackfill(const std::set<uint16_t> &backfillVBuckets) {
         }
         if (!vblist.empty()) {
             tp->scheduleBackfill(vblist);
-            notifyPausedConnection(tp, true);
+            notifyPausedConnection(tc, true);
         }
     }
 }
@@ -725,7 +727,7 @@ bool TapConnMap::changeVBucketFilter(const std::string &name,
             tp->registerCursor(checkpoints);
             rv = true;
             lh.unlock();
-            notifyPausedConnection(tp, true);
+            notifyPausedConnection(tc, true);
         }
     }
     return rv;

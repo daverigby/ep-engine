@@ -284,6 +284,10 @@ public:
         swap(other.gimme());
     }
 
+    void swap(SingleThreadedRCPtr<T> &other) {
+        swap(other.get());
+    }
+
     // safe for the lifetime of this instance
     T *get() const {
         return value;
