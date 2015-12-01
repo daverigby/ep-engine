@@ -102,10 +102,6 @@ DcpConsumer::DcpConsumer(EventuallyPersistentEngine &engine, const void *cookie,
     pendingEnableExtMetaData = true;
     pendingEnableValueCompression = config.isDcpValueCompressionEnabled();
     pendingSupportCursorDropping = true;
-
-    ExTask task = ExTask(
-            new Processer(&engine, this, Priority::PendingOpsPriority, 1));
-    processerTaskId = ExecutorPool::get()->schedule(task, NONIO_TASK_IDX);
 }
 
 DcpConsumer::~DcpConsumer() {
@@ -115,6 +111,17 @@ DcpConsumer::~DcpConsumer() {
     delete[] streams;
 }
 
+void DcpConsumer::startTask() {
+    if (processerTaskId != 0) {
+        throw std::logic_error(
+                "DcpConsumer:startTask: Task is already running (with ID:" +
+                std::to_string(processerTaskId));
+    }
+    ExTask task = ExTask(
+            new Processer(&engine_, shared_from_this(),
+                          Priority::PendingOpsPriority, 1));
+    processerTaskId = ExecutorPool::get()->schedule(task, NONIO_TASK_IDX);
+}
 
 void DcpConsumer::cancelTask() {
     bool inverse = false;
@@ -265,9 +272,9 @@ ENGINE_ERROR_CODE DcpConsumer::mutation(uint32_t opaque, const void* key,
     ENGINE_ERROR_CODE err = ENGINE_KEY_ENOENT;
     passive_stream_t stream = streams[vbucket];
     if (stream && stream->getOpaque() == opaque && stream->isActive()) {
-        Item *item = new Item(key, nkey, flags, exptime, value, nvalue,
-                              &datatype, EXT_META_LEN, cas, bySeqno,
-                              vbucket, revSeqno);
+        auto item = std::make_shared<Item>(key, nkey, flags, exptime, value,
+                                           nvalue, &datatype, EXT_META_LEN, cas,
+                                           bySeqno, vbucket, revSeqno);
 
         ExtendedMetaData *emd = NULL;
         if (nmeta > 0) {
@@ -328,8 +335,8 @@ ENGINE_ERROR_CODE DcpConsumer::deletion(uint32_t opaque, const void* key,
     ENGINE_ERROR_CODE err = ENGINE_KEY_ENOENT;
     passive_stream_t stream = streams[vbucket];
     if (stream && stream->getOpaque() == opaque && stream->isActive()) {
-        Item* item = new Item(key, nkey, 0, 0, NULL, 0, NULL, 0, cas, bySeqno,
-                              vbucket, revSeqno);
+        auto item = std::make_shared<Item>(key, nkey, 0, 0, nullptr, 0, nullptr,
+                                           0, cas, bySeqno, vbucket, revSeqno);
         item->setDeleted();
 
         ExtendedMetaData *emd = NULL;
@@ -642,7 +649,8 @@ ENGINE_ERROR_CODE DcpConsumer::handleResponse(
 
             ExTask task = ExTask(
                     new RollbackTask(&engine_, opaque, vbid, rollbackSeqno,
-                                     this, Priority::TapBgFetcherPriority));
+                                     shared_from_this(),
+                                     Priority::TapBgFetcherPriority));
             ExecutorPool::get()->schedule(task, WRITER_TASK_IDX);
             return ENGINE_SUCCESS;
         }
@@ -771,7 +779,8 @@ process_items_error_t DcpConsumer::processBufferedItems() {
         /* Notify memcached to get flow control buffer ack out. We cannot wait
            till the ConnManager daemon task notifies the memcached as it would
            cause delay in buffer ack being sent out to the producer */
-        engine_.getDcpConnMap().notifyPausedConnection(this, false);
+        engine_.getDcpConnMap().notifyPausedConnection(shared_from_this(),
+                                                       false);
     }
 
     if (process_ret == all_processed && itemsToProcess.load()) {
@@ -829,7 +838,7 @@ void DcpConsumer::notifyStreamReady(uint16_t vbucket) {
     ready.push_back(vbucket);
     lh.unlock();
 
-    engine_.getDcpConnMap().notifyPausedConnection(this, true);
+    engine_.getDcpConnMap().notifyPausedConnection(shared_from_this(), true);
 }
 
 void DcpConsumer::streamAccepted(uint32_t opaque, uint16_t status, uint8_t* body,

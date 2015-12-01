@@ -21,6 +21,7 @@
 #include "config.h"
 
 #include <atomic>
+#include <memory>
 
 #define AtomicValue std::atomic
 
@@ -147,7 +148,6 @@ private:
 };
 
 template <class T> class RCPtr;
-template <class S> class SingleThreadedRCPtr;
 
 /**
  * A reference counted value (used by RCPtr and SingleThreadedRCPtr).
@@ -252,85 +252,15 @@ private:
 
 /**
  * Single-threaded reference counted pointer.
- * "Single-threaded" means that the reference counted pointer should be accessed
- * by only one thread at any time or accesses to the reference counted pointer
- * by multiple threads should be synchronized by the external lock.
+ *
+ * "Single-threaded" means that the reference counted pointer should be
+ * modified by only one thread at any time. const member functions are safe
+ * for access from multiple threads. See the details of std::shared_ptr in the
+ * spec for details.
+ *
+ * Any mutations to the reference counted pointer by multiple threads should
+ * be synchronized by an external lock.
  */
-template <class T>
-class SingleThreadedRCPtr {
-public:
-    SingleThreadedRCPtr(T *init = NULL) : value(init) {
-        if (init != NULL) {
-            static_cast<RCValue*>(value)->_rc_incref();
-        }
-    }
-
-    SingleThreadedRCPtr(const SingleThreadedRCPtr<T> &other) : value(other.gimme()) {}
-
-    ~SingleThreadedRCPtr() {
-        if (value && static_cast<RCValue *>(value)->_rc_decref() == 0) {
-            delete value;
-        }
-    }
-
-    void reset(T *newValue = NULL) {
-        if (newValue != NULL) {
-            static_cast<RCValue *>(newValue)->_rc_incref();
-        }
-        swap(newValue);
-    }
-
-    void reset(const SingleThreadedRCPtr<T> &other) {
-        swap(other.gimme());
-    }
-
-    void swap(SingleThreadedRCPtr<T> &other) {
-        swap(other.get());
-    }
-
-    // safe for the lifetime of this instance
-    T *get() const {
-        return value;
-    }
-
-    SingleThreadedRCPtr<T> & operator =(const SingleThreadedRCPtr<T> &other) {
-        reset(other);
-        return *this;
-    }
-
-    T &operator *() const {
-        return *value;
-    }
-
-    T *operator ->() const {
-        return value;
-    }
-
-    bool operator! () const {
-        return !value;
-    }
-
-    operator bool () const {
-        return (bool)value;
-    }
-
-private:
-    T *gimme() const {
-        if (value) {
-            static_cast<RCValue *>(value)->_rc_incref();
-        }
-        return value;
-    }
-
-    void swap(T *newValue) {
-        T *old = value;
-        value = newValue;
-        if (old != NULL && static_cast<RCValue *>(old)->_rc_decref() == 0) {
-            delete old;
-        }
-    }
-
-    T *value;
-};
+#define SingleThreadedRCPtr std::shared_ptr
 
 #endif  // SRC_ATOMIC_H_

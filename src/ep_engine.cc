@@ -2688,12 +2688,10 @@ bool EventuallyPersistentEngine::createTapQueue(const void *cookie,
         }
     }
 
-    TapProducer *tp = tapConnMap->newProducer(cookie, tapName, flags,
-                                 backfillAge,
-                                 static_cast<int>(
-                                 configuration.getTapKeepalive()),
-                                 vbuckets,
-                                 lastCheckpointIds);
+    auto tp = tapConnMap->newProducer(
+            cookie, tapName, flags, backfillAge,
+            static_cast<int>(configuration.getTapKeepalive()), vbuckets,
+            lastCheckpointIds);
 
     tapConnMap->notifyPausedConnection(tp, true);
     return true;
@@ -6260,7 +6258,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::dcpOpen(const void* cookie,
         return ENGINE_DISCONNECT;
     }
 
-    ConnHandler *handler = NULL;
+    connection_t handler;
     if (flags & DCP_OPEN_PRODUCER) {
         handler = dcpConnMap_->newProducer(cookie, connName, false);
     } else if (flags & DCP_OPEN_NOTIFIER) {
@@ -6269,10 +6267,10 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::dcpOpen(const void* cookie,
         handler = dcpConnMap_->newConsumer(cookie, connName);
     }
 
-    if (handler == nullptr) {
+    if (!handler) {
         throw std::logic_error("EPEngine::dcpOpen: failed to create a handler");
     }
-    storeEngineSpecific(cookie, handler);
+    storeEngineSpecific(cookie, handler.get());
 
     return ENGINE_SUCCESS;
 }

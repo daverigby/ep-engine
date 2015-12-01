@@ -664,7 +664,7 @@ void TapProducer::rollback() {
  */
 class ResumeCallback : public GlobalTask {
 public:
-    ResumeCallback(EventuallyPersistentEngine &e, Producer *c,
+    ResumeCallback(EventuallyPersistentEngine &e, connection_t c,
                    double sleepTime)
         : GlobalTask(&e, Priority::TapResumePriority, sleepTime),
           engine(e), conn(c) {
@@ -690,7 +690,7 @@ public:
 
 private:
     EventuallyPersistentEngine &engine;
-    SingleThreadedRCPtr<ConnHandler> conn;
+    connection_t conn;
     std::string descr;
 };
 
@@ -700,7 +700,7 @@ void TapProducer::suspendedConnection_UNLOCKED(bool value)
         const TapConfig &config = engine_.getTapConfig();
         if (config.getBackoffSleepTime() > 0 && !isSuspended()) {
             ExTask resTapTask = ExTask(
-                    new ResumeCallback(engine_, this,
+                    new ResumeCallback(engine_, shared_from_this(),
                                        config.getBackoffSleepTime()));
             ExecutorPool::get()->schedule(resTapTask, NONIO_TASK_IDX);
             LOG(EXTENSION_LOG_NOTICE, "%s Suspend for %.2f secs",
@@ -845,7 +845,8 @@ ENGINE_ERROR_CODE TapProducer::processAck(uint32_t s,
         lh.unlock(); // Release the lock to avoid the deadlock with the notify thread
 
         if (notifyTapNotificationThread) {
-            engine_.getTapConnMap().notifyPausedConnection(this, true);
+            engine_.getTapConnMap().notifyPausedConnection(shared_from_this(),
+                                                           true);
         }
 
         lh.lock();

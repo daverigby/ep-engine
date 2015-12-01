@@ -211,14 +211,17 @@ ENGINE_ERROR_CODE DcpProducer::streamRequest(uint32_t flags,
 
     if (notifyOnly) {
         streams[vbucket] = stream_t(
-                new NotifierStream(&engine_, this, getName(), flags, opaque,
-                                   vbucket, notifySeqno, end_seqno,
-                                   vbucket_uuid, snap_start_seqno,
-                                   snap_end_seqno));
+                new NotifierStream(&engine_,
+                                   std::static_pointer_cast<DcpProducer>(shared_from_this()),
+                                   getName(), flags, opaque, vbucket,
+                                   notifySeqno, end_seqno, vbucket_uuid,
+                                   snap_start_seqno, snap_end_seqno));
     } else {
         streams[vbucket] = stream_t(
-                new ActiveStream(&engine_, this, getName(), flags, opaque,
-                                 vbucket, start_seqno, end_seqno, vbucket_uuid,
+                new ActiveStream(&engine_,
+                                 std::static_pointer_cast<DcpProducer>(shared_from_this()),
+                                 getName(), flags, opaque, vbucket,
+                                 start_seqno, end_seqno, vbucket_uuid,
                                  snap_start_seqno, snap_end_seqno));
         static_cast<ActiveStream*>(streams[vbucket].get())->setActive();
     }
@@ -226,8 +229,7 @@ ENGINE_ERROR_CODE DcpProducer::streamRequest(uint32_t flags,
     ready.push_back(vbucket);
     lh.unlock();
     if (add_vb_conn_map) {
-        connection_t conn(this);
-        engine_.getDcpConnMap().addVBConnByVBId(conn, vbucket);
+        engine_.getDcpConnMap().addVBConnByVBId(shared_from_this(), vbucket);
     }
 
     return rv;
@@ -426,7 +428,8 @@ ENGINE_ERROR_CODE DcpProducer::bufferAcknowledgement(uint32_t opaque,
         lh.unlock();
 
         if (wasFull) {
-            engine_.getDcpConnMap().notifyPausedConnection(this, true);
+            engine_.getDcpConnMap().notifyPausedConnection(shared_from_this(),
+                                                           true);
         }
     }
 
@@ -590,8 +593,7 @@ ENGINE_ERROR_CODE DcpProducer::closeStream(uint32_t opaque, uint16_t vbucket) {
         streams.erase(vbucket);
         ready.remove(vbucket);
         lh.unlock();
-        connection_t conn(this);
-        engine_.getDcpConnMap().removeVBConnByVBId(conn, vbucket);
+        engine_.getDcpConnMap().removeVBConnByVBId(shared_from_this(), vbucket);
         return ENGINE_KEY_ENOENT;
     }
 
@@ -601,8 +603,7 @@ ENGINE_ERROR_CODE DcpProducer::closeStream(uint32_t opaque, uint16_t vbucket) {
     lh.unlock();
 
     stream->setDead(END_STREAM_CLOSED);
-    connection_t conn(this);
-    engine_.getDcpConnMap().removeVBConnByVBId(conn, vbucket);
+    engine_.getDcpConnMap().removeVBConnByVBId(shared_from_this(), vbucket);
     return ENGINE_SUCCESS;
 }
 
@@ -628,7 +629,7 @@ void DcpProducer::addStats(ADD_STAT add_stat, const void *c) {
             add_stat, c);
 
     if (backfillMgr) {
-        backfillMgr->addStats(this, add_stat, c);
+        backfillMgr->addStats(shared_from_this(), add_stat, c);
     }
 
     if (log) {
@@ -770,10 +771,9 @@ void DcpProducer::closeAllStreams() {
     }
     lh.unlock();
 
-    connection_t conn(this);
     std::list<uint16_t>::iterator it = vblist.begin();
     for (; it != vblist.end(); ++it) {
-        engine_.getDcpConnMap().removeVBConnByVBId(conn, *it);
+        engine_.getDcpConnMap().removeVBConnByVBId(shared_from_this(), *it);
     }
 }
 
@@ -870,7 +870,8 @@ void DcpProducer::notifyStreamReady(uint16_t vbucket, bool schedule) {
     lh.unlock();
 
     if (notifyPausedConnection) {
-        engine_.getDcpConnMap().notifyPausedConnection(this, schedule);
+        engine_.getDcpConnMap().notifyPausedConnection(shared_from_this(),
+                                                       schedule);
     }
 }
 

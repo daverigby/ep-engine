@@ -173,7 +173,7 @@ enum conn_type_t {
     DCP_CONN  //!< DCP connection
 };
 
-class ConnHandler : public RCValue {
+class ConnHandler : public std::enable_shared_from_this<ConnHandler> {
 public:
     ConnHandler(EventuallyPersistentEngine& engine, const void* c,
                 const std::string& name);

@@ -275,7 +275,7 @@ public:
      * Find or build a tap connection for the given cookie and with
      * the given name.
      */
-    TapProducer *newProducer(const void* cookie,
+    std::shared_ptr<TapProducer> newProducer(const void* cookie,
                              const std::string &name,
                              uint32_t flags,
                              uint64_t backfillAge,
@@ -446,9 +446,9 @@ public:
      * Find or build a dcp connection for the given cookie and with
      * the given name.
      */
-    DcpProducer *newProducer(const void* cookie, const std::string &name,
-                             bool notifyOnly);
-
+    std::shared_ptr<DcpProducer> newProducer(const void* cookie,
+                                             const std::string &name,
+                                             bool notifyOnly);
 
     /**
      * Create a new consumer and add it in the list of TapConnections
@@ -456,7 +456,7 @@ public:
      * @param c the cookie representing the client
      * @return Pointer to the new dcp connection
      */
-    DcpConsumer *newConsumer(const void* cookie, const std::string &name);
+    connection_t newConsumer(const void* cookie, const std::string &name);
 
     void notifyVBConnections(uint16_t vbid, uint64_t bySeqno);
 

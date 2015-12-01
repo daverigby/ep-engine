@@ -81,7 +81,8 @@ enum backfill_source_t {
     BACKFILL_FROM_DISK
 };
 
-class Stream : public RCValue {
+class Stream : public RCValue,
+               public std::enable_shared_from_this<Stream> {
 public:
     Stream(const std::string &name, uint32_t flags, uint32_t opaque,
            uint16_t vb, uint64_t start_seqno, uint64_t end_seqno,
@@ -173,7 +174,7 @@ private:
 
 class ActiveStream : public Stream {
 public:
-    ActiveStream(EventuallyPersistentEngine* e, DcpProducer* p,
+    ActiveStream(EventuallyPersistentEngine* e, std::shared_ptr<DcpProducer> p,
                  const std::string &name, uint32_t flags, uint32_t opaque,
                  uint16_t vb, uint64_t st_seqno, uint64_t en_seqno,
                  uint64_t vb_uuid, uint64_t snap_start_seqno,
@@ -286,7 +287,7 @@ private:
     int waitForSnapshot;
 
     EventuallyPersistentEngine* engine;
-    DcpProducer* producer;
+    std::shared_ptr<DcpProducer> producer;
     bool isBackfillTaskRunning;
 
     struct {
@@ -304,7 +305,8 @@ private:
 
 class NotifierStream : public Stream {
 public:
-    NotifierStream(EventuallyPersistentEngine* e, DcpProducer* producer,
+    NotifierStream(EventuallyPersistentEngine* e,
+                   std::shared_ptr<DcpProducer> producer,
                    const std::string &name, uint32_t flags, uint32_t opaque,
                    uint16_t vb, uint64_t start_seqno, uint64_t end_seqno,
                    uint64_t vb_uuid, uint64_t snap_start_seqno,
@@ -326,7 +328,7 @@ private:
 
     void transitionState(stream_state_t newState);
 
-    DcpProducer* producer;
+    std::shared_ptr<DcpProducer> producer;
 };
 
 class PassiveStream : public Stream {

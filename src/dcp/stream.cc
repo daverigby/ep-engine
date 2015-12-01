@@ -129,7 +129,8 @@ void Stream::addStats(ADD_STAT add_stat, const void *c) {
     add_casted_stat(buffer, stateName(state_), add_stat, c);
 }
 
-ActiveStream::ActiveStream(EventuallyPersistentEngine* e, DcpProducer* p,
+ActiveStream::ActiveStream(EventuallyPersistentEngine* e,
+                           std::shared_ptr<DcpProducer> p,
                            const std::string &n, uint32_t flags,
                            uint32_t opaque, uint16_t vb, uint64_t st_seqno,
                            uint64_t en_seqno, uint64_t vb_uuid,
@@ -288,7 +289,8 @@ bool ActiveStream::backfillReceived(Item* itm, backfill_source_t backfill_source
         bufferedBackfill.bytes.fetch_add(itm->size());
         bufferedBackfill.items++;
 
-        pushToReadyQ(new MutationResponse(itm, opaque_,
+        // Note transfer of ownership of `itm` to the MutationResponse:
+        pushToReadyQ(new MutationResponse(std::shared_ptr<Item>(itm), opaque_,
                           prepareExtendedMetaData(itm->getVBucketId(),
                                                   itm->getConflictResMode())));
         lastReadSeqno.store(itm->getBySeqno());
@@ -757,7 +759,8 @@ void ActiveStream::scheduleBackfill() {
 
         if (backfillStart <= backfillEnd && tryBackfill) {
             BackfillManager* backfillMgr = producer->getBackfillManager();
-            backfillMgr->schedule(this, backfillStart, backfillEnd);
+            backfillMgr->schedule(shared_from_this(), backfillStart,
+                                  backfillEnd);
             isBackfillTaskRunning = true;
         } else {
             if (flags_ & DCP_ADD_STREAM_FLAG_DISKONLY) {
@@ -912,7 +915,8 @@ bool ActiveStream::isSendMutationKeyOnlyEnabled() const
     return (KEY_ONLY == payloadType);
 }
 
-NotifierStream::NotifierStream(EventuallyPersistentEngine* e, DcpProducer* p,
+NotifierStream::NotifierStream(EventuallyPersistentEngine* e,
+                               std::shared_ptr<DcpProducer> p,
                                const std::string &name, uint32_t flags,
                                uint32_t opaque, uint16_t vb, uint64_t st_seqno,
                                uint64_t en_seqno, uint64_t vb_uuid,

@@ -107,6 +107,13 @@ public:
 
     bool isStreamPresent(uint16_t vbucket);
 
+    /* Creates and schedules the DcpConsumers' background task.
+     *
+     * Must only be called once - will throw std::logic_error if task has
+     * already been started.
+     */
+    void startTask();
+
     void cancelTask();
 
     void taskCancelled();

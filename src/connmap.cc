@@ -368,7 +368,7 @@ TapConsumer *TapConnMap::newConsumer(const void* cookie)
     return tc;
 }
 
-TapProducer *TapConnMap::newProducer(const void* cookie,
+std::shared_ptr<TapProducer> TapConnMap::newProducer(const void* cookie,
                                      const std::string &name,
                                      uint32_t flags,
                                      uint64_t backfillAge,
@@ -377,18 +377,17 @@ TapProducer *TapConnMap::newProducer(const void* cookie,
                                      const std::map<uint16_t, uint64_t> &lastCheckpointIds)
 {
     LockHolder lh(connsLock);
-    TapProducer *producer(NULL);
+    std::shared_ptr<TapProducer> producer;
 
-    std::list<connection_t>::iterator iter;
-    for (iter = all.begin(); iter != all.end(); ++iter) {
-        producer = dynamic_cast<TapProducer*>((*iter).get());
-        if (producer && producer->getName() == name) {
-            producer->setExpiryTime((rel_time_t)-1);
-            producer->reconnected();
-            break;
-        }
-        else {
-            producer = NULL;
+    for (auto& iter : all) {
+        if (iter->getName() == name) {
+            auto temp_producer = std::dynamic_pointer_cast<TapProducer>(iter);
+            if (temp_producer) {
+                producer = temp_producer;
+                producer->setExpiryTime((rel_time_t)-1);
+                producer->reconnected();
+                break;
+            }
         }
     }
 
@@ -407,7 +406,9 @@ TapProducer *TapConnMap::newProducer(const void* cookie,
             producer->setConnected(false);
             producer->setPaused(true);
             producer->setExpiryTime(ep_current_time() - 1);
-            producer = NULL;
+            // Nothing more to be done with old producer handle - reset to null
+            // so we create a new producer below.
+            producer.reset();
         }
         else {
             LOG(EXTENSION_LOG_INFO, "%s exists... grabbing the channel",
@@ -417,23 +418,21 @@ TapProducer *TapConnMap::newProducer(const void* cookie,
             // memcached connection.
 
             // dliao: TODO no need to deal with tap or dcp separately here for the dummy?
-            TapProducer *n = new TapProducer(engine,
-                                             old_cookie,
-                                             ConnHandler::getAnonName(),
-                                             0);
+            auto n = std::make_shared<TapProducer>(
+                    engine, old_cookie, ConnHandler::getAnonName(), 0);
             n->setDisconnect(true);
             n->setConnected(false);
             n->setPaused(true);
             n->setExpiryTime(ep_current_time() - 1);
-            all.push_back(connection_t(n));
+            all.push_back(n);
         }
     }
 
     bool reconnect = false;
     if (producer == NULL) {
-        producer = new TapProducer(engine, cookie, name, flags);
+        producer = std::make_shared<TapProducer>(engine, cookie, name, flags);
         LOG(EXTENSION_LOG_INFO, "%s created", producer->logHeader());
-        all.push_back(connection_t(producer));
+        all.push_back(producer);
     } else {
         producer->setCookie(cookie);
         producer->setReserved(true);
@@ -455,8 +454,8 @@ TapProducer *TapConnMap::newProducer(const void* cookie,
         producer->rollback();
     }
 
-    map_[cookie] = conn;
-    engine.storeEngineSpecific(cookie, producer);
+    map_[cookie] = producer;
+    engine.storeEngineSpecific(cookie, producer.get());
     // Clear all previous session stats for this producer.
     clearPrevSessionStats(producer->getName());
 
@@ -949,7 +948,7 @@ DcpConnMap::DcpConnMap(EventuallyPersistentEngine &e)
 }
 
 
-DcpConsumer *DcpConnMap::newConsumer(const void* cookie,
+connection_t DcpConnMap::newConsumer(const void* cookie,
                                      const std::string &name)
 {
     LockHolder lh(connsLock);
@@ -966,11 +965,12 @@ DcpConsumer *DcpConnMap::newConsumer(const void* cookie,
         }
     }
 
-    DcpConsumer *dcp = new DcpConsumer(engine, cookie, conn_name);
-    connection_t dc(dcp);
-    LOG(EXTENSION_LOG_INFO, "%s Connection created", dc->logHeader());
-    all.push_back(dc);
-    map_[cookie] = dc;
+    auto dcp = std::make_shared<DcpConsumer>(engine, cookie, conn_name);
+    dcp->startTask();
+
+    LOG(EXTENSION_LOG_INFO, "%s Connection created", dcp->logHeader());
+    all.push_back(dcp);
+    map_[cookie] = dcp;
     return dcp;
 
 }
@@ -1006,10 +1006,9 @@ ENGINE_ERROR_CODE DcpConnMap::addPassiveStream(ConnHandler& conn,
     return conn.addStream(opaque, vbucket, flags);
 }
 
-DcpProducer *DcpConnMap::newProducer(const void* cookie,
-                                     const std::string &name,
-                                     bool notifyOnly)
-{
+std::shared_ptr<DcpProducer> DcpConnMap::newProducer(const void* cookie,
+                                                     const std::string &name,
+                                                     bool notifyOnly) {
     LockHolder lh(connsLock);
 
     std::string conn_name("eq_dcpq:");
@@ -1024,9 +1023,10 @@ DcpProducer *DcpConnMap::newProducer(const void* cookie,
         }
     }
 
-    DcpProducer *dcp = new DcpProducer(engine, cookie, conn_name, notifyOnly);
+    auto dcp = std::make_shared<DcpProducer>(engine, cookie, conn_name,
+                                             notifyOnly);
     LOG(EXTENSION_LOG_INFO, "%s Connection created", dcp->logHeader());
-    all.push_back(connection_t(dcp));
+    all.push_back(dcp);
     map_[cookie] = dcp;
 
     return dcp;
