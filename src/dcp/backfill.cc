@@ -36,7 +36,7 @@ static std::string backfillStateToString(backfill_state_t state) {
     }
 }
 
-CacheCallback::CacheCallback(EventuallyPersistentEngine* e, stream_t &s)
+CacheCallback::CacheCallback(EventuallyPersistentEngine& e, stream_t &s)
     : engine_(e),
       stream_(s) {
     if (stream_.get() == nullptr) {
@@ -50,7 +50,7 @@ CacheCallback::CacheCallback(EventuallyPersistentEngine* e, stream_t &s)
 }
 
 void CacheCallback::callback(CacheLookup &lookup) {
-    RCPtr<VBucket> vb = engine_->getEpStore()->getVBucket(lookup.getVBucketId());
+    RCPtr<VBucket> vb = engine_.getEpStore()->getVBucket(lookup.getVBucketId());
     if (!vb) {
         setStatus(ENGINE_SUCCESS);
         return;
@@ -111,7 +111,7 @@ void DiskCallback::callback(GetValue &val) {
     }
 }
 
-DCPBackfill::DCPBackfill(EventuallyPersistentEngine* e, stream_t s,
+DCPBackfill::DCPBackfill(EventuallyPersistentEngine& e, stream_t s,
                          uint64_t start_seqno, uint64_t end_seqno)
     : engine(e), stream(s),startSeqno(start_seqno), endSeqno(end_seqno),
       scanCtx(NULL), state(backfill_state_init) {
@@ -158,7 +158,7 @@ backfill_status_t DCPBackfill::create() {
     uint16_t vbid = stream->getVBucket();
 
     uint64_t lastPersistedSeqno =
-        engine->getEpStore()->getLastPersistedSeqno(vbid);
+        engine.getEpStore()->getLastPersistedSeqno(vbid);
 
     ActiveStream* as = static_cast<ActiveStream*>(stream.get());
 
@@ -170,7 +170,7 @@ backfill_status_t DCPBackfill::create() {
         return backfill_snooze;
     }
 
-    KVStore* kvstore = engine->getEpStore()->getROUnderlying(vbid);
+    KVStore* kvstore = engine.getEpStore()->getROUnderlying(vbid);
     ValueFilter valFilter = ValueFilter::VALUES_DECOMPRESSED;
     if (as->isSendMutationKeyOnlyEnabled()) {
         valFilter = ValueFilter::KEYS_ONLY;
@@ -203,7 +203,7 @@ backfill_status_t DCPBackfill::scan() {
         return complete(true);
     }
 
-    KVStore* kvstore = engine->getEpStore()->getROUnderlying(vbid);
+    KVStore* kvstore = engine.getEpStore()->getROUnderlying(vbid);
     scan_error_t error = kvstore->scan(scanCtx);
 
     if (error == scan_again) {
@@ -217,7 +217,7 @@ backfill_status_t DCPBackfill::scan() {
 
 backfill_status_t DCPBackfill::complete(bool cancelled) {
     uint16_t vbid = stream->getVBucket();
-    KVStore* kvstore = engine->getEpStore()->getROUnderlying(vbid);
+    KVStore* kvstore = engine.getEpStore()->getROUnderlying(vbid);
     kvstore->destroyScanContext(scanCtx);
 
     ActiveStream* as = static_cast<ActiveStream*>(stream.get());

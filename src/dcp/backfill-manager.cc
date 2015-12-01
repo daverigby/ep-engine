@@ -26,10 +26,10 @@ static const size_t sleepTime = 1;
 
 class BackfillManagerTask : public GlobalTask {
 public:
-    BackfillManagerTask(EventuallyPersistentEngine* e, BackfillManager* mgr,
+    BackfillManagerTask(EventuallyPersistentEngine& e, BackfillManager* mgr,
                         const Priority &p, double sleeptime = 0,
                         bool shutdown = false)
-        : GlobalTask(e, p, sleeptime, shutdown), manager(mgr) {}
+        : GlobalTask(&e, p, sleeptime, shutdown), manager(mgr) {}
 
     bool run();
 
@@ -60,10 +60,11 @@ std::string BackfillManagerTask::getDescription() {
     return ss.str();
 }
 
-BackfillManager::BackfillManager(EventuallyPersistentEngine* e, connection_t c)
-    : engine(e), conn(c), managerTask(NULL) {
+BackfillManager::BackfillManager(EventuallyPersistentEngine& e)
+    : engine(e),
+      managerTask(NULL) {
 
-    Configuration& config = e->getConfiguration();
+    Configuration& config = e.getConfiguration();
 
     scanBuffer.bytesRead = 0;
     scanBuffer.itemsRead = 0;
@@ -98,7 +99,7 @@ BackfillManager::~BackfillManager() {
         activeBackfills.pop_front();
         backfill->cancel();
         delete backfill;
-        engine->getDcpConnMap().decrNumActiveSnoozingBackfills();
+        engine.getDcpConnMap().decrNumActiveSnoozingBackfills();
     }
 
     while (!snoozingBackfills.empty()) {
@@ -106,7 +107,7 @@ BackfillManager::~BackfillManager() {
         snoozingBackfills.pop_front();
         backfill->cancel();
         delete backfill;
-        engine->getDcpConnMap().decrNumActiveSnoozingBackfills();
+        engine.getDcpConnMap().decrNumActiveSnoozingBackfills();
     }
 
     while (!pendingBackfills.empty()) {
@@ -119,7 +120,7 @@ BackfillManager::~BackfillManager() {
 
 void BackfillManager::schedule(stream_t stream, uint64_t start, uint64_t end) {
     LockHolder lh(lock);
-    if (engine->getDcpConnMap().canAddBackfillToActiveQ()) {
+    if (engine.getDcpConnMap().canAddBackfillToActiveQ()) {
         activeBackfills.push_back(new DCPBackfill(engine, stream, start, end));
     } else {
         pendingBackfills.push_back(new DCPBackfill(engine, stream, start, end));
@@ -194,7 +195,7 @@ backfill_status_t BackfillManager::backfill() {
         return backfill_finished;
     }
 
-    if (engine->getEpStore()->isMemoryUsageTooHigh()) {
+    if (engine.getEpStore()->isMemoryUsageTooHigh()) {
         LOG(EXTENSION_LOG_WARNING, "DCP backfilling task temporarily suspended "
             "because the current memory usage is too high");
         return backfill_snooze;
@@ -217,7 +218,7 @@ backfill_status_t BackfillManager::backfill() {
                 (*a_itr)->cancel();
                 toDelete.push_back(*a_itr);
                 a_itr = activeBackfills.erase(a_itr);
-                engine->getDcpConnMap().decrNumActiveSnoozingBackfills();
+                engine.getDcpConnMap().decrNumActiveSnoozingBackfills();
             } else {
                 ++a_itr;
             }
@@ -248,10 +249,10 @@ backfill_status_t BackfillManager::backfill() {
     } else if (status == backfill_finished) {
         lh.unlock();
         delete backfill;
-        engine->getDcpConnMap().decrNumActiveSnoozingBackfills();
+        engine.getDcpConnMap().decrNumActiveSnoozingBackfills();
     } else if (status == backfill_snooze) {
         uint16_t vbid = backfill->getVBucketId();
-        RCPtr<VBucket> vb = engine->getVBucket(vbid);
+        RCPtr<VBucket> vb = engine.getVBucket(vbid);
         if (vb) {
             snoozingBackfills.push_back(
                                 std::make_pair(ep_current_time(), backfill));
@@ -261,7 +262,7 @@ backfill_status_t BackfillManager::backfill() {
                     "seems to have been deleted!", vbid);
             backfill->cancel();
             delete backfill;
-            engine->getDcpConnMap().decrNumActiveSnoozingBackfills();
+            engine.getDcpConnMap().decrNumActiveSnoozingBackfills();
         }
     } else {
         abort();
@@ -273,7 +274,7 @@ backfill_status_t BackfillManager::backfill() {
 void BackfillManager::moveToActiveQueue() {
     // Order in below AND is important
     while (!pendingBackfills.empty()
-           && engine->getDcpConnMap().canAddBackfillToActiveQ()) {
+           && engine.getDcpConnMap().canAddBackfillToActiveQ()) {
         activeBackfills.push_back(pendingBackfills.front());
         pendingBackfills.pop_front();
     }

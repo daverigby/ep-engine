@@ -41,12 +41,12 @@ enum backfill_status_t {
 
 class CacheCallback : public Callback<CacheLookup> {
 public:
-    CacheCallback(EventuallyPersistentEngine* e, stream_t &s);
+    CacheCallback(EventuallyPersistentEngine& e, stream_t &s);
 
     void callback(CacheLookup &lookup);
 
 private:
-    EventuallyPersistentEngine* engine_;
+    EventuallyPersistentEngine& engine_;
     stream_t stream_;
 };
 
@@ -62,7 +62,7 @@ private:
 
 class DCPBackfill {
 public:
-    DCPBackfill(EventuallyPersistentEngine* e, stream_t s,
+    DCPBackfill(EventuallyPersistentEngine& e, stream_t s,
                 uint64_t start_seqno, uint64_t end_seqno);
 
     backfill_status_t run();
@@ -87,7 +87,7 @@ private:
 
     void transitionState(backfill_state_t newState);
 
-    EventuallyPersistentEngine *engine;
+    EventuallyPersistentEngine& engine;
     stream_t                    stream;
     uint64_t                    startSeqno;
     uint64_t                    endSeqno;
