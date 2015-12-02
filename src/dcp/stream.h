@@ -398,7 +398,7 @@ private:
     } buffer;
 };
 
-typedef SingleThreadedRCPtr<Stream> stream_t;
+typedef std::shared_ptr<Stream> stream_t;
 typedef RCPtr<PassiveStream> passive_stream_t;
 
 #endif  // SRC_DCP_STREAM_H_

@@ -54,7 +54,7 @@ const uint8_t MIN_NRU_VALUE = 0;
 /**
  * A blob is a minimal sized storage for data up to 2^32 bytes long.
  */
-class Blob : public RCValue {
+class Blob {
 public:
 
     // Constructors.
@@ -280,7 +280,7 @@ private:
     DISALLOW_ASSIGN(Blob);
 };
 
-typedef SingleThreadedRCPtr<Blob> value_t;
+typedef std::shared_ptr<Blob> value_t;
 
 const uint64_t DEFAULT_REV_SEQ_NUM = 1;
 
@@ -318,7 +318,7 @@ enum conflict_resolution_mode {
  * core and the backend. Please note that the kvstore don't store these
  * objects, so we do have an extra layer of memory copying :(
  */
-class Item : public RCValue {
+class Item {
 public:
 
     /* Constructor (existing value_t).
@@ -697,7 +697,7 @@ private:
     DISALLOW_ASSIGN(Item);
 };
 
-typedef SingleThreadedRCPtr<Item> queued_item;
+typedef std::shared_ptr<Item> queued_item;
 
 /**
  * Order queued_item objects pointed by std::shared_ptr by their keys.

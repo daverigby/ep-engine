@@ -41,7 +41,7 @@ class DcpProducer;
 class Item;
 class EventuallyPersistentEngine;
 
-typedef SingleThreadedRCPtr<ConnHandler> connection_t;
+typedef std::shared_ptr<ConnHandler> connection_t;
 /**
  * Base class for operations performed on tap connections.
  *

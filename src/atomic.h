@@ -150,7 +150,7 @@ private:
 template <class T> class RCPtr;
 
 /**
- * A reference counted value (used by RCPtr and SingleThreadedRCPtr).
+ * A reference counted value (used by RCPtr).
  */
 class RCValue {
 public:
@@ -159,7 +159,6 @@ public:
     ~RCValue() {}
 private:
     template <class MyTT> friend class RCPtr;
-    template <class MySS> friend class SingleThreadedRCPtr;
     int _rc_incref() const {
         return ++_rc_refcount;
     }
@@ -249,18 +248,5 @@ private:
     AtomicPtr<C> value;
     mutable SpinLock lock; // exists solely for the purpose of implementing reset() safely
 };
-
-/**
- * Single-threaded reference counted pointer.
- *
- * "Single-threaded" means that the reference counted pointer should be
- * modified by only one thread at any time. const member functions are safe
- * for access from multiple threads. See the details of std::shared_ptr in the
- * spec for details.
- *
- * Any mutations to the reference counted pointer by multiple threads should
- * be synchronized by an external lock.
- */
-#define SingleThreadedRCPtr std::shared_ptr
 
 #endif  // SRC_ATOMIC_H_

@@ -155,7 +155,7 @@ private:
     AtomicValue<hrtime_t> waketime;      // used for priority_queue
 };
 
-typedef SingleThreadedRCPtr<GlobalTask> ExTask;
+typedef std::shared_ptr<GlobalTask> ExTask;
 
 /**
  * A task for persisting items to disk.
