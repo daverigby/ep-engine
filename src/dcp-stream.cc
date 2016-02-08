@@ -1325,6 +1325,16 @@ ENGINE_ERROR_CODE PassiveStream::processDeletion(MutationResponse* deletion) {
     uint64_t delCas = 0;
     ENGINE_ERROR_CODE ret;
     ItemMetaData meta = deletion->getItem()->getMetaData();
+
+    // MB-17517: Check for the incoming item's CAS validity.
+    if (!Item::isValidCas(meta.cas)) {
+        LOG(EXTENSION_LOG_WARNING,
+            "%s Invalid CAS (0x%" PRIx64 ") received for deletion {vb:%" PRIu16
+            ", seqno:%" PRId64 "}. Regenerating new CAS",
+            consumer->logHeader(), meta.cas, vb_, deletion->getBySeqno());
+        meta.cas = Item::nextCas();
+    }
+
     ret = engine->getEpStore()->deleteWithMeta(deletion->getItem()->getKey(),
                                                &delCas, NULL, deletion->getVBucket(),
                                                consumer->getCookie(), true,
