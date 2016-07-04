@@ -109,9 +109,71 @@ TEST_F(SingleThreadedEPStoreTest, MB19695_doTapVbTakeoverStats) {
                     (nullptr, dummy_cb, key, vbid));
 
     // Cleanup - run the 3rd task - VBStatePersistTask.
-    fake_thread.updateCurrentTime();
-    EXPECT_TRUE(lpWriterQ->fetchNextTask(fake_thread, false));
-    EXPECT_EQ("Persisting a vbucket state for vbucket: 0",
-              fake_thread.getTaskName());
-    fake_thread.runCurrentTask();
+    runNextTask(lpWriterQ, "Persisting a vbucket state for vbucket: 0");
+}
+
+// Check that if onDeleteItem() is called during bucket deletion, we do not
+// abort due to not having a valid thread-local 'engine' pointer. This
+// has been observed when we have a DCPBackfill task which is deleted during
+// bucket shutdown, which has a non-zero number of Items which are destructed
+// (and call onDeleteItem).
+TEST_F(SingleThreadedEPStoreTest, MB20054_onDeleteItem_during_bucket_deletion) {
+    // Make vbucket active.
+    setVBucketStateAndRunPersistTask(vbid, vbucket_state_active);
+
+    // Perform one SET, then close it's checkpoint. This means that we no
+    // longer have all sequence numbers in memory checkpoints, forcing the
+    // DCP stream request to go to disk (backfill).
+    store_item(vbid, "key", "value");
+
+    // Force a new checkpoint.
+    auto vb = store->getVbMap().getBucket(vbid);
+    auto& ckpt_mgr = vb->checkpointManager;
+    ckpt_mgr.createNewCheckpoint();
+
+    // Directly flush the vbucket, ensuring data is on disk.
+    //  (This would normally also wake up the checkpoint remover task, but
+    //   as that task was never registered with the ExecutorPool in this test
+    //   environment, we need to manually remove the prev checkpoint).
+    EXPECT_EQ(1, store->flushVBucket(vbid));
+
+    bool new_ckpt_created;
+    EXPECT_EQ(1,
+              ckpt_mgr.removeClosedUnrefCheckpoints(vb, new_ckpt_created));
+
+    // Create a DCP producer, and start a stream request.
+    std::string name{"test_producer"};
+    EXPECT_EQ(ENGINE_SUCCESS,
+              engine->dcpOpen(cookie, /*opaque:unused*/{}, /*seqno:unused*/{},
+                              DCP_OPEN_PRODUCER, name.data(), name.size()));
+
+    uint64_t rollbackSeqno;
+    auto dummy_dcp_add_failover_cb = [](vbucket_failover_t* entry,
+                                       size_t nentries, const void *cookie) {
+        return ENGINE_SUCCESS;
+    };
+
+    // Actual stream request method (EvpDcpStreamReq) is static, so access via
+    // the engine_interface.
+    EXPECT_EQ(ENGINE_SUCCESS,
+              engine.get()->dcp.stream_req(
+                      &engine.get()->interface, cookie, /*flags*/0,
+                      /*opaque*/0, /*vbucket*/vbid, /*start_seqno*/0,
+                      /*end_seqno*/-1, /*vb_uuid*/0xabcd, /*snap_start*/0,
+                      /*snap_end*/0, &rollbackSeqno,
+                      dummy_dcp_add_failover_cb));
+
+    // Run the DCPBackfill task (5 times?), so add some items to the
+    // stream readyQ
+    auto* task_executor = reinterpret_cast<SingleThreadedExecutorPool*>
+        (ExecutorPool::get());
+    auto& lpAuxioQ = *task_executor->getLpTaskQ()[AUXIO_TASK_IDX];
+    runNextTask(lpAuxioQ, "Backfilling items for a DCP Connection");
+    runNextTask(lpAuxioQ, "Backfilling items for a DCP Connection");
+    runNextTask(lpAuxioQ, "Backfilling items for a DCP Connection");
+    runNextTask(lpAuxioQ, "Backfilling items for a DCP Connection");
+    runNextTask(lpAuxioQ, "Backfilling items for a DCP Connection");
+
+    // Trigger deletion of the bucket (engine).
+//    engine.reset();
 }
