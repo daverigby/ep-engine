@@ -32,6 +32,7 @@
 #include "connmap.h"
 #include "ep_engine.h"
 #include "flusher.h"
+#include "tapthrottle.h"
 #include "../mock/mock_dcp_producer.h"
 
 #include "programs/engine_testapp/mock_server.h"
@@ -65,6 +66,12 @@ SynchronousEPEngine::SynchronousEPEngine(const std::string& extra_config)
 
     // checkpointConfig is needed by CheckpointManager (via EPStore).
     checkpointConfig = new CheckpointConfig(*this);
+
+    // tapConfig is needed by doTapStats().
+    tapConfig = new TapConfig(*this);
+
+    // tapThrottle is needed by doEngineStats().
+    tapThrottle = new TapThrottle(configuration, stats);
 }
 
 void SynchronousEPEngine::setEPStore(EventuallyPersistentStore* store) {
@@ -125,13 +132,24 @@ void EventuallyPersistentStoreTest::SetUp() {
     // Need to initialize ep_real_time and friends.
     initialize_time_functions(get_mock_server_api()->core);
 
+    // Need to initialize the tap & dcpConnMap so when shutdownAllConnections
+    // is called there are valid connNotifier objects.
+    engine->getTapConnMap().initialize(TAP_CONN_NOTIFIER);
+    engine->getDcpConnMap().initialize(DCP_CONN_NOTIFIER);
+
     cookie = create_mock_cookie();
 }
 
 void EventuallyPersistentStoreTest::TearDown() {
-    destroy_mock_cookie(cookie);
+//    destroy_mock_cookie(cookie);
     destroy_mock_event_callbacks();
     engine->getDcpConnMap().manageConnections();
+    engine->destroy(/*force*/false);
+
+    // Need to have the current engine valid before deleting (this is what
+    // EvpDestroy does normally; however we have a smart ptr to the engine
+    // so must delete via that).
+    ObjectRegistry::onSwitchThread(engine.get());
     engine.reset();
 
     // Shutdown of the ExecutorPool not possible in 3.0.x
@@ -153,5 +171,79 @@ void EventuallyPersistentStoreTest::store_item(uint16_t vbid,
 // an assert and crash.
 //
 
+// Check that if onDeleteItem() is called during bucket deletion, we do not
+// abort due to not having a valid thread-local 'engine' pointer. This
+// has been observed when we have a DCPBackfill task which is deleted during
+// bucket shutdown, which has a non-zero number of Items which are destructed
+// (and call onDeleteItem).
+TEST_F(EventuallyPersistentStoreTest, MB20054_onDeleteItem_during_bucket_deletion) {
+
+#if 1
+    // Activate vBucket zero so we can store data.
+    store->setVBucketState(vbid, vbucket_state_active, false);
+
+    // Perform one SET, then close it's checkpoint. This means that we no
+    // longer have all sequence numbers in memory checkpoints, forcing the
+    // DCP stream request to go to disk (backfill).
+    store_item(vbid, "key", "value");
+
+    // Force a new checkpoint.
+    auto vb = store->getVbMap().getBucket(vbid);
+    auto& ckpt_mgr = vb->checkpointManager;
+    ckpt_mgr.createNewCheckpoint();
+
+    // Trigger a flush to disk. We have to retry as the warmup may not be
+    // complete.
+    int result;
+    const auto deadline = std::chrono::steady_clock::now() +
+                          std::chrono::seconds(5);
+    do {
+        result = store->flushVBucket(vbid);
+        if (result != RETRY_FLUSH_VBUCKET) {
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::microseconds(100));
+    } while (std::chrono::steady_clock::now() < deadline);
+
+    bool new_ckpt_created;
+    EXPECT_EQ(1,
+              ckpt_mgr.removeClosedUnrefCheckpoints(vb, new_ckpt_created));
+
+    // Evict the value from memory, to force a BGfetch from disk.
+    const char* msg;
+    size_t msg_size{sizeof(msg)};
+    EXPECT_EQ(ENGINE_SUCCESS, store->evictKey("key", 0, &msg, &msg_size));
+    EXPECT_EQ("Ejected.", std::string(msg));
+
+    // Create a DCP producer, and start a stream request.
+    std::string name("test_producer");
+    EXPECT_EQ(ENGINE_SUCCESS,
+              engine->dcpOpen(cookie, /*opaque:unused*/0, /*seqno:unused*/0,
+                              DCP_OPEN_PRODUCER, name.data(), name.size()));
+
+    uint64_t rollbackSeqno;
+    auto dummy_dcp_add_failover_cb = [](vbucket_failover_t* entry,
+                                       size_t nentries, const void *cookie) {
+        return ENGINE_SUCCESS;
+    };
+
+    // Actual stream request method (EvpDcpStreamReq) is static, so access via
+    // the engine_interface.
+    EXPECT_EQ(ENGINE_SUCCESS,
+              engine.get()->dcp.stream_req(
+                      &engine.get()->interface, cookie, /*flags*/0,
+                      /*opaque*/0, /*vbucket*/vbid, /*start_seqno*/0,
+                      /*end_seqno*/-1, /*vb_uuid*/0xabcd, /*snap_start*/0,
+                      /*snap_end*/0, &rollbackSeqno,
+                      dummy_dcp_add_failover_cb));
+
+    fprintf(stderr, "Waiting on cookie...\n");
+    waitfor_mock_cookie(cookie);
+    fprintf(stderr, "cookie signaled\n");
+
+    // Trigger deletion of the bucket (engine).
+//    engine.reset();
+#endif
+}
 
 const char EventuallyPersistentStoreTest::test_dbname[] = "ep_engine_ep_unit_tests_db";
