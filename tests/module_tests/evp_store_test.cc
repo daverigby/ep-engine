@@ -64,6 +64,9 @@ SynchronousEPEngine::SynchronousEPEngine(const std::string& extra_config)
     // tapConnMap is needed by queueDirty.
     tapConnMap = new TapConnMap(*this);
 
+    // tapConfig is needed by doTapStats().
+    tapConfig = new TapConfig(*this);
+
     // checkpointConfig is needed by CheckpointManager (via EPStore).
     checkpointConfig = new CheckpointConfig(*this);
 

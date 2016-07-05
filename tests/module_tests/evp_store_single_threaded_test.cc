@@ -168,12 +168,31 @@ TEST_F(SingleThreadedEPStoreTest, MB20054_onDeleteItem_during_bucket_deletion) {
     auto* task_executor = reinterpret_cast<SingleThreadedExecutorPool*>
         (ExecutorPool::get());
     auto& lpAuxioQ = *task_executor->getLpTaskQ()[AUXIO_TASK_IDX];
-    runNextTask(lpAuxioQ, "Backfilling items for a DCP Connection");
-    runNextTask(lpAuxioQ, "Backfilling items for a DCP Connection");
-    runNextTask(lpAuxioQ, "Backfilling items for a DCP Connection");
-    runNextTask(lpAuxioQ, "Backfilling items for a DCP Connection");
-    runNextTask(lpAuxioQ, "Backfilling items for a DCP Connection");
 
+    // Create a CheckExeckedExecutor 'thread' to obtain shared ownership of
+    // the next AuxIO task (which should be DCPBackfill). As long as this
+    // object is in scope, the DCPBackfilltask will not be deleted.
+    // Essentially we are simulating a concurrent thread running this task.
+    CheckedExecutor executor(task_executor, lpAuxioQ);
+    EXPECT_EQ("Backfilling items for a DCP Connection",
+              executor.getTaskName());
+
+
+//    // First time it runs we push one item to readyQ (snapshot marker)
+//    runNextTask(lpAuxioQ, "Backfilling items for a DCP Connection");
+
+    // Now trigger deletion of the bucket, *while* the DCPBackfill task is
+    // still 'running' (via CheckedExecutor).
+    engine->destroy(/*force*/false);
+
+//    // Run the next task (another DCPBackfill).
+//    runNextTask(lpAuxioQ, "Backfilling items for a DCP Connection");
+//
+//    runNextTask(lpAuxioQ, "Backfilling items for a DCP Connection");
+//    runNextTask(lpAuxioQ, "Backfilling items for a DCP Connection");
+//
+//    runNextTask(lpAuxioQ, "Backfilling items for a DCP Connection");
+//
     // Trigger deletion of the bucket (engine).
 //    engine.reset();
 }
