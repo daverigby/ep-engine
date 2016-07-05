@@ -109,7 +109,11 @@ TEST_F(SingleThreadedEPStoreTest, MB19695_doTapVbTakeoverStats) {
                     (nullptr, dummy_cb, key, vbid));
 
     // Cleanup - run the 3rd task - VBStatePersistTask.
-    runNextTask(lpWriterQ, "Persisting a vbucket state for vbucket: 0");
+    fake_thread.updateCurrentTime();
+    EXPECT_TRUE(lpWriterQ->fetchNextTask(fake_thread, false));
+    EXPECT_EQ("Persisting a vbucket state for vbucket: 0",
+              fake_thread.getTaskName());
+    fake_thread.runCurrentTask();
 }
 
 // Check that if onDeleteItem() is called during bucket deletion, we do not
