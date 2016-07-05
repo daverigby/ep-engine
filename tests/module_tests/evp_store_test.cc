@@ -135,10 +135,12 @@ void EventuallyPersistentStoreTest::SetUp() {
     // Need to initialize ep_real_time and friends.
     initialize_time_functions(get_mock_server_api()->core);
 
+#if 0
     // Need to initialize the tap & dcpConnMap so when shutdownAllConnections
     // is called there are valid connNotifier objects.
     engine->getTapConnMap().initialize(TAP_CONN_NOTIFIER);
     engine->getDcpConnMap().initialize(DCP_CONN_NOTIFIER);
+#endif
 
     cookie = create_mock_cookie();
 }
@@ -146,8 +148,10 @@ void EventuallyPersistentStoreTest::SetUp() {
 void EventuallyPersistentStoreTest::TearDown() {
 //    destroy_mock_cookie(cookie);
     destroy_mock_event_callbacks();
-    engine->getDcpConnMap().manageConnections();
-    engine->destroy(/*force*/false);
+//    engine->getDcpConnMap().manageConnections();
+    if (engine) {
+        engine->destroy(/*force*/false);
+    }
 
     // Need to have the current engine valid before deleting (this is what
     // EvpDestroy does normally; however we have a smart ptr to the engine
@@ -155,7 +159,11 @@ void EventuallyPersistentStoreTest::TearDown() {
     ObjectRegistry::onSwitchThread(engine.get());
     engine.reset();
 
-    // Shutdown of the ExecutorPool not possible in 3.0.x
+    // Shutdown the ExecutorPool singleton (initialized when we create
+    // an EventuallyPersistentStore object). Must happen after engine
+    // has been destroyed (to allow the tasks the engine has
+    // registered a chance to be unregistered).
+    ExecutorPool::shutdown();
 }
 
 void EventuallyPersistentStoreTest::store_item(uint16_t vbid,
@@ -168,6 +176,7 @@ void EventuallyPersistentStoreTest::store_item(uint16_t vbid,
 }
 
 
+#if 0
 //
 // EPStoreEvictionTest disabled in 3.0.x backport - there's an unknown
 // bug where onSwitchThread() ends up NULL, meaning that we eventually hit
@@ -248,5 +257,6 @@ TEST_F(EventuallyPersistentStoreTest, MB20054_onDeleteItem_during_bucket_deletio
 //    engine.reset();
 #endif
 }
+#endif
 
 const char EventuallyPersistentStoreTest::test_dbname[] = "ep_engine_ep_unit_tests_db";

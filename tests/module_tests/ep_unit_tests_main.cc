@@ -52,7 +52,7 @@ int main(int argc, char **argv) {
         }
     }
 
-    putenv(allow_no_stats_env);
+//    putenv(allow_no_stats_env);
 
     init_mock_server(log_to_stderr);
 

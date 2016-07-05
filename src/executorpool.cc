@@ -315,9 +315,8 @@ bool ExecutorPool::_cancel(size_t taskId, bool eraseTask) {
 }
 
 bool ExecutorPool::cancel(size_t taskId, bool eraseTask) {
-    EventuallyPersistentEngine *epe = ObjectRegistry::onSwitchThread(NULL, true);
+    ObjectRegistry::MemoryStatsBlocker block;
     bool rv = _cancel(taskId, eraseTask);
-    ObjectRegistry::onSwitchThread(epe);
     return rv;
 }
 
@@ -332,9 +331,8 @@ bool ExecutorPool::_wake(size_t taskId) {
 }
 
 bool ExecutorPool::wake(size_t taskId) {
-    EventuallyPersistentEngine *epe = ObjectRegistry::onSwitchThread(NULL, true);
+    ObjectRegistry::MemoryStatsBlocker block;
     bool rv = _wake(taskId);
-    ObjectRegistry::onSwitchThread(epe);
     return rv;
 }
 
@@ -349,9 +347,8 @@ bool ExecutorPool::_snooze(size_t taskId, double tosleep) {
 }
 
 bool ExecutorPool::snooze(size_t taskId, double tosleep) {
-    EventuallyPersistentEngine *epe = ObjectRegistry::onSwitchThread(NULL, true);
+    ObjectRegistry::MemoryStatsBlocker block;
     bool rv = _snooze(taskId, tosleep);
-    ObjectRegistry::onSwitchThread(epe);
     return rv;
 }
 
@@ -401,9 +398,8 @@ size_t ExecutorPool::_schedule(ExTask task, task_type_t qidx) {
 }
 
 size_t ExecutorPool::schedule(ExTask task, task_type_t qidx) {
-    EventuallyPersistentEngine *epe = ObjectRegistry::onSwitchThread(NULL, true);
+    ObjectRegistry::MemoryStatsBlocker block;
     size_t rv = _schedule(task, qidx);
-    ObjectRegistry::onSwitchThread(epe);
     return rv;
 }
 
@@ -447,9 +443,8 @@ void ExecutorPool::_registerBucket(EventuallyPersistentEngine *engine) {
 }
 
 void ExecutorPool::registerBucket(EventuallyPersistentEngine *engine) {
-    EventuallyPersistentEngine *epe = ObjectRegistry::onSwitchThread(NULL, true);
+    ObjectRegistry::MemoryStatsBlocker block;
     _registerBucket(engine);
-    ObjectRegistry::onSwitchThread(epe);
 }
 
 bool ExecutorPool::_startWorkers(void) {

@@ -49,6 +49,15 @@ public:
     static void setStats(AtomicValue<size_t>* init_track);
     static bool memoryAllocated(size_t mem);
     static bool memoryDeallocated(size_t mem);
+
+    class MemoryStatsBlocker {
+    public:
+        MemoryStatsBlocker();
+
+        ~MemoryStatsBlocker();
+
+        EventuallyPersistentEngine* engine;
+    };
 };
 
 #endif  // SRC_OBJECTREGISTRY_H_

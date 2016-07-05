@@ -49,10 +49,8 @@ public:
                     "ExecutorPool instance already created - cowardly refusing to continue!");
         }
 
-        EventuallyPersistentEngine *epe =
-                ObjectRegistry::onSwitchThread(NULL, true);
+        ObjectRegistry::MemoryStatsBlocker block;
         tmp = new SingleThreadedExecutorPool(NUM_TASK_GROUPS);
-        ObjectRegistry::onSwitchThread(epe);
         instance = tmp;
     }
 

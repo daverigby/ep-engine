@@ -179,7 +179,8 @@ private:
 };
 
 ConnMap::ConnMap(EventuallyPersistentEngine &theEngine)
-    :  engine(theEngine) {
+    :  engine(theEngine),
+       connNotifier_(NULL) {
 
     Configuration &config = engine.getConfiguration();
     vbConnLocks = new SpinLock[vbConnLockNum];
@@ -198,7 +199,9 @@ void ConnMap::initialize(conn_notifier_type ntype) {
 
 ConnMap::~ConnMap() {
     delete [] vbConnLocks;
-    connNotifier_->stop();
+    if (connNotifier_ != NULL) {
+        connNotifier_->stop();
+    }
     delete connNotifier_;
 }
 
@@ -751,7 +754,9 @@ bool TapConnMap::mapped(connection_t &tc) {
 void TapConnMap::shutdownAllConnections() {
     LOG(EXTENSION_LOG_WARNING, "Shutting down tap connections!");
 
-    connNotifier_->stop();
+    if (connNotifier_ != NULL) {
+        connNotifier_->stop();
+    }
 
     // Not safe to acquire both connsLock and releaseLock at the same time
     // (can trigger deadlock), so first acquire releaseLock to release all
@@ -1020,7 +1025,9 @@ DcpProducer *DcpConnMap::newProducer(const void* cookie,
 void DcpConnMap::shutdownAllConnections() {
     LOG(EXTENSION_LOG_WARNING, "Shutting down dcp connections!");
 
-    connNotifier_->stop();
+    if (connNotifier_ != NULL) {
+        connNotifier_->stop();
+    }
 
     // Not safe to acquire both connsLock and releaseLock at the same time
     // (can trigger deadlock), so first acquire releaseLock to release all

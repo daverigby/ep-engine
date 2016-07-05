@@ -122,8 +122,35 @@ TEST_F(SingleThreadedEPStoreTest, MB19695_doTapVbTakeoverStats) {
 // bucket shutdown, which has a non-zero number of Items which are destructed
 // (and call onDeleteItem).
 TEST_F(SingleThreadedEPStoreTest, MB20054_onDeleteItem_during_bucket_deletion) {
-    // Make vbucket active.
-    setVBucketStateAndRunPersistTask(vbid, vbucket_state_active);
+    auto* task_executor = reinterpret_cast<SingleThreadedExecutorPool*>
+        (ExecutorPool::get());
+
+    // Should start with no tasks registered on any queues.
+    for (auto& queue : task_executor->getLpTaskQ()) {
+        ASSERT_EQ(0, queue->getFutureQueueSize());
+        ASSERT_EQ(0, queue->getReadyQueueSize());
+    }
+
+    // [[1] Set our state to active. This should add a VBStatePersistTask to
+    // the WRITER queue.
+    EXPECT_EQ(ENGINE_SUCCESS,
+              store->setVBucketState(vbid, vbucket_state_active, false));
+
+    auto& lpWriterQ = task_executor->getLpTaskQ()[WRITER_TASK_IDX];
+    auto& lpAuxioQ = task_executor->getLpTaskQ()[AUXIO_TASK_IDX];
+
+    EXPECT_EQ(1, lpWriterQ->getFutureQueueSize());
+    EXPECT_EQ(0, lpWriterQ->getReadyQueueSize());
+
+    // Use a FakeExecutorThread to fetch and run the persistTask.
+    FakeExecutorThread writer_thread(task_executor, WRITER_TASK_IDX);
+    writer_thread.updateCurrentTime();
+    EXPECT_TRUE(lpWriterQ->fetchNextTask(writer_thread, false));
+    EXPECT_EQ("Persisting a vbucket state for vbucket: 0",
+              writer_thread.getTaskName());
+    EXPECT_EQ(0, lpWriterQ->getFutureQueueSize());
+    EXPECT_EQ(0, lpWriterQ->getReadyQueueSize());
+    writer_thread.runCurrentTask();
 
     // Perform one SET, then close it's checkpoint. This means that we no
     // longer have all sequence numbers in memory checkpoints, forcing the
@@ -135,6 +162,12 @@ TEST_F(SingleThreadedEPStoreTest, MB20054_onDeleteItem_during_bucket_deletion) {
     auto& ckpt_mgr = vb->checkpointManager;
     ckpt_mgr.createNewCheckpoint();
 
+    EXPECT_EQ(0, lpWriterQ->getFutureQueueSize());
+    EXPECT_EQ(0, lpWriterQ->getReadyQueueSize());
+
+    EXPECT_EQ(0, lpAuxioQ->getFutureQueueSize());
+    EXPECT_EQ(0, lpAuxioQ->getReadyQueueSize());
+
     // Directly flush the vbucket, ensuring data is on disk.
     //  (This would normally also wake up the checkpoint remover task, but
     //   as that task was never registered with the ExecutorPool in this test
@@ -145,11 +178,19 @@ TEST_F(SingleThreadedEPStoreTest, MB20054_onDeleteItem_during_bucket_deletion) {
     EXPECT_EQ(1,
               ckpt_mgr.removeClosedUnrefCheckpoints(vb, new_ckpt_created));
 
+    EXPECT_EQ(0, lpAuxioQ->getFutureQueueSize());
+    EXPECT_EQ(0, lpAuxioQ->getReadyQueueSize());
+
     // Create a DCP producer, and start a stream request.
     std::string name{"test_producer"};
     EXPECT_EQ(ENGINE_SUCCESS,
               engine->dcpOpen(cookie, /*opaque:unused*/{}, /*seqno:unused*/{},
                               DCP_OPEN_PRODUCER, name.data(), name.size()));
+
+    // Expect to have an ActiveStreamCheckpointProcessorTask, which is
+    // initially snoozed (so we can't run it).
+    EXPECT_EQ(1, lpAuxioQ->getFutureQueueSize());
+    EXPECT_EQ(0, lpAuxioQ->getReadyQueueSize());
 
     uint64_t rollbackSeqno;
     auto dummy_dcp_add_failover_cb = [](vbucket_failover_t* entry,
@@ -167,36 +208,52 @@ TEST_F(SingleThreadedEPStoreTest, MB20054_onDeleteItem_during_bucket_deletion) {
                       /*snap_end*/0, &rollbackSeqno,
                       dummy_dcp_add_failover_cb));
 
-    // Run the DCPBackfill task (5 times?), so add some items to the
-    // stream readyQ
-    auto* task_executor = reinterpret_cast<SingleThreadedExecutorPool*>
-        (ExecutorPool::get());
-    auto& lpAuxioQ = *task_executor->getLpTaskQ()[AUXIO_TASK_IDX];
+    // FutureQ should now have an additional DCPBackfill task.
+    EXPECT_EQ(2, lpAuxioQ->getFutureQueueSize());
+    EXPECT_EQ(0, lpAuxioQ->getReadyQueueSize());
 
-    // Create a CheckExeckedExecutor 'thread' to obtain shared ownership of
-    // the next AuxIO task (which should be DCPBackfill). As long as this
+    // Create an executor 'thread' to obtain shared ownership of the next
+    // AuxIO task (which should be DCPBackfill). As long as this
     // object is in scope, the DCPBackfilltask will not be deleted.
     // Essentially we are simulating a concurrent thread running this task.
-    CheckedExecutor executor(task_executor, lpAuxioQ);
-    EXPECT_EQ("Backfilling items for a DCP Connection",
-              executor.getTaskName());
+    FakeExecutorThread auxio_thread(task_executor, AUXIO_TASK_IDX);
+    auxio_thread.updateCurrentTime();
+    EXPECT_TRUE(lpAuxioQ->fetchNextTask(auxio_thread, false));
+    EXPECT_EQ("DCP backfill for vbucket 0", auxio_thread.getTaskName());
 
+    // This is the one action we really need to perform 'concurrently' - delete
+    // the engine while a DCPBackfill task is still running. To achieve this
+    // we spin up a seperate thread which will
+    // run the DCPBackfill task concurrently with destroy (strictly speaking
+    // just after delete is called and we are waiting in
+    // ExecutorPool::_stopTaskGroup
+    auto concurrent_task_thread = std::thread{
+        [&auxio_thread, &lpAuxioQ](EventuallyPersistentEngine* engine) {
+            ObjectRegistry::onSwitchThread(engine);
 
-//    // First time it runs we push one item to readyQ (snapshot marker)
-//    runNextTask(lpAuxioQ, "Backfilling items for a DCP Connection");
+            // First time it runs we push one item to readyQ (snapshot marker)
+            auxio_thread.runCurrentTask();
 
-    // Now trigger deletion of the bucket, *while* the DCPBackfill task is
-    // still 'running' (via CheckedExecutor).
+            // Attempt to fetch the next task, so it can be cancelled
+            // (and executorpool shut down).
+            auxio_thread.updateCurrentTime();
+            EXPECT_TRUE(lpAuxioQ->fetchNextTask(auxio_thread, false));
+            EXPECT_EQ("Process checkpoint(s) for DCP producer",
+                      auxio_thread.getTaskName());
+            auxio_thread.runCurrentTask();
+    }, engine.get()};
+
+    sleep(1);
+
+    // 'Destroy' the engine - this doesn't delete the object, just shuts down
+    // connections, marks streams as dead etc.
     engine->destroy(/*force*/false);
 
-//    // Run the next task (another DCPBackfill).
-//    runNextTask(lpAuxioQ, "Backfilling items for a DCP Connection");
-//
-//    runNextTask(lpAuxioQ, "Backfilling items for a DCP Connection");
-//    runNextTask(lpAuxioQ, "Backfilling items for a DCP Connection");
-//
-//    runNextTask(lpAuxioQ, "Backfilling items for a DCP Connection");
-//
-    // Trigger deletion of the bucket (engine).
-//    engine.reset();
+    // Need to have the current engine valid before deleting (this is what
+    // EvpDestroy does normally; however we have a smart ptr to the engine
+    // so must delete via that).
+    ObjectRegistry::onSwitchThread(engine.get());
+    engine.reset();
+
+    concurrent_task_thread.join();
 }

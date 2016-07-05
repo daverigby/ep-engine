@@ -495,15 +495,13 @@ public:
     ENGINE_ERROR_CODE releaseCookie(const void *cookie);
 
     void storeEngineSpecific(const void *cookie, void *engine_data) {
-        EventuallyPersistentEngine *epe = ObjectRegistry::onSwitchThread(NULL, true);
+        ObjectRegistry::MemoryStatsBlocker block;
         serverApi->cookie->store_engine_specific(cookie, engine_data);
-        ObjectRegistry::onSwitchThread(epe);
     }
 
     void *getEngineSpecific(const void *cookie) {
-        EventuallyPersistentEngine *epe = ObjectRegistry::onSwitchThread(NULL, true);
+        ObjectRegistry::MemoryStatsBlocker block;
         void *engine_data = serverApi->cookie->get_engine_specific(cookie);
-        ObjectRegistry::onSwitchThread(epe);
         return engine_data;
     }
 

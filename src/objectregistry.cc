@@ -220,3 +220,12 @@ bool ObjectRegistry::memoryDeallocated(size_t mem) {
     }
     return true;
 }
+
+ObjectRegistry::MemoryStatsBlocker::MemoryStatsBlocker() {
+    engine = th->get();
+    th->set(NULL);
+}
+
+ObjectRegistry::MemoryStatsBlocker::~MemoryStatsBlocker() {
+    th->set(engine);
+}

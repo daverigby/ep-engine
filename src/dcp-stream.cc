@@ -168,6 +168,9 @@ bool DCPBackfill::run() {
 
     static_cast<ActiveStream*>(stream.get())->completeBackfill();
 
+    fprintf(stderr, "DCPBackfill::run complete - sleeping...\n");
+    sleep(5);
+
     LOG(EXTENSION_LOG_WARNING, "%s (vb %" PRIu16 ") "
         "Backfill task (%" PRIu64 " to %" PRIu64 ") "
         "finished. memory seqno %" PRIu64,

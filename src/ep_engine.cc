@@ -1759,9 +1759,6 @@ extern "C" {
      */
     void destroy_engine() {
         ExecutorPool::shutdown();
-        // A single MemoryTracker exists for *all* buckets
-        // and must be destroyed before unloading the shared object.
-        MemoryTracker::destroyInstance();
     }
 
     static bool EvpGetItemInfo(ENGINE_HANDLE *, const void *,
@@ -1818,18 +1815,17 @@ void LOG(EXTENSION_LOG_LEVEL severity, const char *fmt, ...) {
             (EXTENSION_LOGGER_DESCRIPTOR*)EventuallyPersistentEngine::loggerApi->get_logger();
 
         if (EventuallyPersistentEngine::loggerApi->get_level() <= severity) {
-            EventuallyPersistentEngine *engine = ObjectRegistry::onSwitchThread(NULL, true);
+            ObjectRegistry::MemoryStatsBlocker block;
             va_list va;
             va_start(va, fmt);
             vsnprintf(buffer, sizeof(buffer) - 1, fmt, va);
-            if (engine) {
-                logger->log(severity, NULL, "(%s) %s", engine->getName(),
+            if (block.engine) {
+                logger->log(severity, NULL, "(%s) %s", block.engine->getName(),
                             buffer);
             } else {
                 logger->log(severity, NULL, "(No Engine) %s", buffer);
             }
             va_end(va);
-            ObjectRegistry::onSwitchThread(engine);
         }
     }
 }
@@ -1902,31 +1898,25 @@ EventuallyPersistentEngine::EventuallyPersistentEngine(
 
 ENGINE_ERROR_CODE EventuallyPersistentEngine::reserveCookie(const void *cookie)
 {
-    EventuallyPersistentEngine *epe =
-                                    ObjectRegistry::onSwitchThread(NULL, true);
+    ObjectRegistry::MemoryStatsBlocker block;
     ENGINE_ERROR_CODE rv = serverApi->cookie->reserve(cookie);
-    ObjectRegistry::onSwitchThread(epe);
     return rv;
 }
 
 ENGINE_ERROR_CODE EventuallyPersistentEngine::releaseCookie(const void *cookie)
 {
-    EventuallyPersistentEngine *epe =
-                                    ObjectRegistry::onSwitchThread(NULL, true);
+    ObjectRegistry::MemoryStatsBlocker block;
     ENGINE_ERROR_CODE rv = serverApi->cookie->release(cookie);
-    ObjectRegistry::onSwitchThread(epe);
     return rv;
 }
 
 void EventuallyPersistentEngine::registerEngineCallback(ENGINE_EVENT_TYPE type,
                                                         EVENT_CALLBACK cb,
                                                         const void *cb_data) {
-    EventuallyPersistentEngine *epe =
-                                    ObjectRegistry::onSwitchThread(NULL, true);
+    ObjectRegistry::MemoryStatsBlocker block;
     SERVER_CALLBACK_API *sapi = getServerApi()->callback;
     sapi->register_callback(reinterpret_cast<ENGINE_HANDLE*>(this),
                             type, cb, cb_data);
-    ObjectRegistry::onSwitchThread(epe);
 }
 
 /**
