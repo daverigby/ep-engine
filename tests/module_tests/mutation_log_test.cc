@@ -113,10 +113,11 @@ static void testSyncSet() {
     cb_assert(ml.getFlushConfig() == FLUSH_COMMIT_1);
 }
 
-static void loaderFun(void *arg, uint16_t vb,
-                      const std::string &k, uint64_t rowid) {
-    std::map<std::string, uint64_t> *maps = reinterpret_cast<std::map<std::string, uint64_t> *>(arg);
-    maps[vb][k] = rowid;
+static bool loaderFun(void *arg, uint16_t vb,
+                      const std::string &k) {
+    std::set<std::string>* sets = reinterpret_cast<std::set<std::string> *>(arg);
+    sets[vb].insert(k);
+    return true;
 }
 
 static void testLogging() {
@@ -455,16 +456,13 @@ static void testLoggingShortRead() {
     }
 
     // Break the log harder (can't read even the initial block)
+    // This should succeed as open() will call reset() to give us a usable
+    // mutation log.
     cb_assert(truncate(TMP_LOG_FILE, 4000) == 0);
 
     {
         MutationLog ml(TMP_LOG_FILE);
-        try {
-            ml.open();
-            abort();
-        } catch(MutationLog::ShortReadException &e) {
-            // expected
-        }
+        ml.open();
     }
 
     remove(TMP_LOG_FILE);
@@ -519,6 +517,7 @@ static void testReadOnly() {
 }
 
 int main(int, char **) {
+    remove(TMP_LOG_FILE);
     testReadOnly();
     testUnconfigured();
     testSyncSet();
