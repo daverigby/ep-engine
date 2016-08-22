@@ -813,43 +813,24 @@ void MutationLog::resetCounts(size_t *items) {
 bool MutationLogHarvester::load() {
     bool clean(false);
     std::set<uint16_t> shouldClear;
-    for (MutationLog::iterator it(mlog.begin()); it != mlog.end(); ++it) {
-        const MutationLogEntry *le = *it;
+    for (const MutationLogEntry* le : mlog) {
         ++itemsSeen[le->type()];
         clean = false;
 
         switch (le->type()) {
         case ML_NEW:
             if (vbid_set.find(le->vbucket()) != vbid_set.end()) {
-                loading[le->vbucket()][le->key()] =
-                                      std::make_pair(le->rowid(), le->type());
+                loading[le->vbucket()].emplace(le->key());
             }
             break;
-        case ML_COMMIT2: {
+        case ML_COMMIT2:
             clean = true;
 
-            for (std::set<uint16_t>::const_iterator vit = vbid_set.begin();
-                 vit != vbid_set.end(); ++vit) {
-                uint16_t vb(*vit);
-
-                unordered_map<std::string, mutation_log_event_t>::iterator
-                              copyit2;
-                for (copyit2 = loading[vb].begin();
-                     copyit2 != loading[vb].end();
-                     ++copyit2) {
-
-                    mutation_log_event_t t = copyit2->second;
-
-                    switch (t.second) {
-                    case ML_NEW:
-                        committed[vb][copyit2->first] = t.first;
-                        break;
-                    default:
-                        abort();
-                    }
+            for (const uint16_t vb : vbid_set) {
+                for (auto& item : loading[vb]) {
+                    committed[vb].emplace(item);
                 }
             }
-        }
             loading.clear();
             break;
         case ML_COMMIT1:
@@ -863,14 +844,8 @@ bool MutationLogHarvester::load() {
 }
 
 void MutationLogHarvester::apply(void *arg, mlCallback mlc) {
-    for (std::set<uint16_t>::const_iterator it = vbid_set.begin();
-         it != vbid_set.end(); ++it) {
-        uint16_t vb(*it);
-
-        for (unordered_map<std::string, uint64_t>::iterator it2 =
-                                                       committed[vb].begin();
-             it2 != committed[vb].end(); ++it2) {
-            const std::string key(it2->first);
+    for (const uint16_t vb : vbid_set) {
+        for (const auto& key : committed[vb]) {
             if (!mlc(arg, vb, key)) { // Stop loading from an access log
                 return;
             }
@@ -880,7 +855,7 @@ void MutationLogHarvester::apply(void *arg, mlCallback mlc) {
 
 void MutationLogHarvester::apply(void *arg, mlCallbackWithQueue mlc) {
     cb_assert(engine);
-    std::vector<std::pair<std::string, uint64_t> > fetches;
+    std::vector<std::string> fetches;
     std::set<uint16_t>::const_iterator it = vbid_set.begin();
     for (; it != vbid_set.end(); ++it) {
         uint16_t vb(*it);
@@ -888,14 +863,11 @@ void MutationLogHarvester::apply(void *arg, mlCallbackWithQueue mlc) {
         if (!vbucket) {
             continue;
         }
-        unordered_map<std::string, uint64_t>::iterator it2 =
-                                                         committed[vb].begin();
-        for (; it2 != committed[vb].end(); ++it2) {
-            // cannot use rowid from access log, so must read from hashtable
-            std::string key = it2->first;
-            StoredValue *v = NULL;
-            if ((v = vbucket->ht.find(key, false))) {
-                fetches.push_back(std::make_pair(it2->first, v->getBySeqno()));
+        for (const auto& key : committed[vb]) {
+            // Check item is a valid StoredValue in the HashTable before
+            // adding to fetches
+            if ((vbucket->ht.find(key, false) != nullptr)) {
+                fetches.push_back(key);
             }
         }
         if (!mlc(vb, fetches, arg)) {

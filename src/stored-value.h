@@ -960,7 +960,7 @@ public:
      * @param key the key to find
      * @return a pointer to a StoredValue -- NULL if not found
      */
-    StoredValue *find(std::string &key, bool trackReference=true) {
+    StoredValue *find(const std::string &key, bool trackReference=true) {
         cb_assert(isActive());
         int bucket_num(0);
         LockHolder lh = getLockedBucket(key, &bucket_num);
