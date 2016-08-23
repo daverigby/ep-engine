@@ -366,8 +366,10 @@ void LoadValueCallback::callback(CacheLookup &lookup)
 //////////////////////////////////////////////////////////////////////////////
 
 
-Warmup::Warmup(EventuallyPersistentStore *st) :
-    state(), store(st), taskId(0), startTime(0), metadata(0), warmup(0),
+Warmup::Warmup(EventuallyPersistentStore *st, Configuration& config_) :
+    state(), store(st),
+    config(config_),
+    taskId(0), startTime(0), metadata(0), warmup(0),
     threadtask_count(0),
     estimateTime(0), estimatedItemCount(std::numeric_limits<size_t>::max()),
     cleanShutdown(true), corruptAccessLog(false), warmupComplete(false),
@@ -725,29 +727,40 @@ size_t Warmup::doWarmup(MutationLog &lf, const std::map<uint16_t,
         harvester.setVBucket(it->first);
     }
 
-    hrtime_t st = gethrtime();
-    if (!harvester.load()) {
-        return -1;
-    }
-    hrtime_t end = gethrtime();
+    // To constrain the number of elements from the access log we have to keep
+    // alive (there may be millions of items per-vBucket), process it
+    // a batch at a time.
+    hrtime_t log_load_duration{};
+    hrtime_t log_apply_duration{};
+    WarmupCookie cookie(store, cb);
+
+    auto alog_iter = lf.begin();
+    do {
+        // Load a chunk of the access log file
+        hrtime_t start = gethrtime();
+        alog_iter = harvester.loadNextBatch(alog_iter, config.getWarmupBatchSize());
+        log_load_duration += (gethrtime() - start);
+
+        // .. then apply it to the store.
+        hrtime_t apply_start = gethrtime();
+        if (store->multiBGFetchEnabled()) {
+            harvester.apply(&cookie, &batchWarmupCallback);
+        } else {
+            harvester.apply(&cookie, &warmupCallback);
+        }
+        log_apply_duration += (gethrtime() - apply_start);
+    } while (alog_iter != lf.end());
 
     size_t total = harvester.total();
     setEstimatedWarmupCount(total);
     LOG(EXTENSION_LOG_DEBUG, "Completed log read in %s with %ld entries",
-        hrtime2text(end - st).c_str(), total);
+        hrtime2text(log_load_duration).c_str(), total);
 
-    st = gethrtime();
-    WarmupCookie cookie(store, cb);
-    if (store->multiBGFetchEnabled()) {
-        harvester.apply(&cookie, &batchWarmupCallback);
-    } else {
-        harvester.apply(&cookie, &warmupCallback);
-    }
-    end = gethrtime();
     LOG(EXTENSION_LOG_DEBUG,
         "Populated log in %s with(l: %ld, s: %ld, e: %ld)",
-        hrtime2text(end - st).c_str(), cookie.loaded, cookie.skipped,
+        hrtime2text(log_apply_duration).c_str(), cookie.loaded, cookie.skipped,
         cookie.error);
+
     return cookie.loaded;
 }
 

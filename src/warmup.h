@@ -111,7 +111,7 @@ private:
 
 class Warmup {
 public:
-    Warmup(EventuallyPersistentStore *st);
+    Warmup(EventuallyPersistentStore *st, Configuration& config);
 
     ~Warmup();
 
@@ -174,6 +174,7 @@ private:
     WarmupState state;
 
     EventuallyPersistentStore *store;
+    Configuration& config;
     size_t taskId;
     hrtime_t startTime;
     AtomicValue<hrtime_t> metadata;

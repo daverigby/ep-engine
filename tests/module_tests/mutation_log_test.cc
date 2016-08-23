@@ -412,6 +412,53 @@ static void testIterator() {
     cb_assert(count == 5);
 }
 
+static void testBatchLoad() {
+    remove(TMP_LOG_FILE);
+
+    {
+        MutationLog ml(TMP_LOG_FILE);
+        ml.open();
+
+        // Add a number of items, then check that batch load only returns
+        // the requested number.
+        for (size_t ii = 0; ii < 10; ii++) {
+            ml.newItem(ii % 2, std::string("key") + std::to_string(ii), ii);
+        }
+        ml.commit1();
+        ml.commit2();
+
+        cb_assert(ml.itemsLogged[ML_NEW] == 10);
+        cb_assert(ml.itemsLogged[ML_COMMIT1] == 1);
+        cb_assert(ml.itemsLogged[ML_COMMIT2] == 1);
+    }
+
+    {
+        MutationLog ml(TMP_LOG_FILE);
+        ml.open();
+        MutationLogHarvester h(ml);
+        h.setVBucket(0);
+        h.setVBucket(1);
+
+        // Ask for 2 items, ensure we get just two.
+        auto next_it = h.loadBatch(ml.begin(), 2);
+        cb_assert(next_it != ml.end());
+
+        std::map<std::string, uint64_t> maps[2];
+        h.apply(&maps, loaderFun);
+        cb_assert(maps[0].size() + maps[1].size() == 2);
+
+        // Ask for 10; should get the remainder (8).
+        next_it = h.loadBatch(next_it, 10);
+        cb_assert(next_it == ml.end());
+
+        for (auto& map : maps) {
+            map.clear();
+        }
+        h.apply(&maps, loaderFun);
+        cb_assert(maps[0].size() + maps[1].size() == 8);
+    }
+}
+
 // @todo
 //   Test Read Only log
 //   Test close / open / close / open
@@ -453,6 +500,7 @@ int main(int, char **) {
     testLoggingShortRead();
     testYUNOOPEN();
     testIterator();
+    testBatchLoad();
 
     remove(TMP_LOG_FILE);
     return 0;
