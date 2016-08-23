@@ -375,6 +375,43 @@ static void testYUNOOPEN() {
     cb_assert(remove(TMP_LOG_FILE) == 0);
 }
 
+// Test that the MutationLog::iterator class obeys expected iterator behaviour.
+static void testIterator() {
+    // Create a simple mutation log to work on.
+    {
+        MutationLog ml(TMP_LOG_FILE);
+        ml.open();
+        ml.newItem(0, "key1", 0);
+        ml.newItem(0, "key2", 1);
+        ml.newItem(0, "key3", 2);
+        ml.commit1();
+        ml.commit2();
+
+        cb_assert(ml.itemsLogged[ML_NEW] == 3);
+        cb_assert(ml.itemsLogged[ML_COMMIT1] == 1);
+        cb_assert(ml.itemsLogged[ML_COMMIT2] == 1);
+    }
+
+    // Now check the iterators.
+    MutationLog ml(TMP_LOG_FILE);
+    ml.open();
+
+    // Can copy-construct.
+    auto iter = ml.begin();
+    cb_assert(iter == ml.begin());
+
+    // Can copy-assign.
+    iter = ml.end();
+    cb_assert(iter == ml.end());
+
+    // Can advance the correct number.
+    size_t count = 0;
+    for (auto iter2 = ml.begin(); iter2 != ml.end(); ++iter2) {
+        count++;
+    }
+    cb_assert(count == 5);
+}
+
 // @todo
 //   Test Read Only log
 //   Test close / open / close / open
@@ -415,6 +452,7 @@ int main(int, char **) {
     testLoggingBadCRC();
     testLoggingShortRead();
     testYUNOOPEN();
+    testIterator();
 
     remove(TMP_LOG_FILE);
     return 0;

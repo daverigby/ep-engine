@@ -709,6 +709,36 @@ MutationLog::iterator::iterator(const MutationLog::iterator& mit)
     }
 }
 
+MutationLog::iterator& MutationLog::iterator::operator=(const MutationLog::iterator& other)
+{
+    log = other.log;
+    if (other.buf != nullptr) {
+        buf = static_cast<uint8_t*>(realloc(buf, log->header().blockSize()));
+        cb_assert(buf);
+        memcpy(buf, other.buf, log->header().blockSize());
+        p = buf + (other.p - other.buf);
+    } else {
+        free(buf);
+        buf = nullptr;
+        p = nullptr;
+    }
+
+    if (other.entryBuf != nullptr) {
+        entryBuf = static_cast<uint8_t*>(realloc(entryBuf, LOG_ENTRY_BUF_SIZE));
+        cb_assert(entryBuf);
+        memcpy(entryBuf, other.entryBuf, LOG_ENTRY_BUF_SIZE);
+    } else {
+        free(entryBuf);
+        entryBuf = nullptr;
+    }
+
+    offset = other.offset;
+    items = other.items;
+    isEnd = other.isEnd;
+
+    return *this;
+}
+
 MutationLog::iterator::~iterator() {
     free(entryBuf);
     free(buf);

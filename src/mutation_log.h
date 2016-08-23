@@ -458,6 +458,8 @@ public:
 
         iterator(const iterator& mit);
 
+        iterator& operator=(const iterator& other);
+
         ~iterator();
 
         iterator& operator++();
