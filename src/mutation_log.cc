@@ -855,25 +855,26 @@ void MutationLogHarvester::apply(void *arg, mlCallback mlc) {
 
 void MutationLogHarvester::apply(void *arg, mlCallbackWithQueue mlc) {
     cb_assert(engine);
-    std::vector<std::string> fetches;
-    std::set<uint16_t>::const_iterator it = vbid_set.begin();
-    for (; it != vbid_set.end(); ++it) {
-        uint16_t vb(*it);
+    for (const uint16_t vb : vbid_set) {
         RCPtr<VBucket> vbucket = engine->getEpStore()->getVBucket(vb);
         if (!vbucket) {
             continue;
         }
-        for (const auto& key : committed[vb]) {
-            // Check item is a valid StoredValue in the HashTable before
-            // adding to fetches
-            if ((vbucket->ht.find(key, false) != nullptr)) {
-                fetches.push_back(key);
+
+        // Remove any items which are no longer valid in the VBucket.
+        for (auto it = committed[vb].begin(); it != committed[vb].end(); ) {
+            if ((vbucket->ht.find(*it, false) == nullptr)) {
+                it = committed[vb].erase(it);
+            }
+            else {
+                ++it;
             }
         }
-        if (!mlc(vb, fetches, arg)) {
+
+        if (!mlc(vb, committed[vb], arg)) {
             return;
         }
-        fetches.clear();
+        committed[vb].clear();
     }
 }
 

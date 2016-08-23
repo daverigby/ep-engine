@@ -55,7 +55,7 @@ struct WarmupCookie {
 };
 
 static bool batchWarmupCallback(uint16_t vbId,
-                                std::vector<std::string>& fetches,
+                                const std::set<std::string>& fetches,
                                 void *arg)
 {
     WarmupCookie *c = static_cast<WarmupCookie *>(arg);
@@ -63,10 +63,6 @@ static bool batchWarmupCallback(uint16_t vbId,
     if (!c->epstore->maybeEnableTraffic()) {
         vb_bgfetch_queue_t items2fetch;
         for (auto& key : fetches) {
-            // ignore duplicate keys, if any in access log
-            if (items2fetch.find(key) != items2fetch.end()) {
-                continue;
-            }
             VBucketBGFetchItem *fit = new VBucketBGFetchItem(NULL, false);
             items2fetch[key].push_back(fit);
         }
