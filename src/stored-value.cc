@@ -359,7 +359,7 @@ void HashTable::resize(size_t newSize) {
     }
 
     // Get a place for the new items.
-    StoredValue **newValues = static_cast<StoredValue**>(calloc(newSize,
+    StoredValue **newValues = static_cast<StoredValue**>(cb_calloc(newSize,
                                                         sizeof(StoredValue*)));
     // If we can't allocate memory, don't move stuff around.
     if (!newValues) {
@@ -387,7 +387,7 @@ void HashTable::resize(size_t newSize) {
     }
 
     // values still points to the old (now empty) table.
-    free(values);
+    cb_free(values);
     values = newValues;
 
     stats.memOverhead.fetch_add(memorySize());
