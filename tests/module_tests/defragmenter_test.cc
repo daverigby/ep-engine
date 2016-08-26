@@ -44,12 +44,12 @@
  * appropriate calls to Valgrind to inform it of allocations / frees.
  */
 void* operator new(std::size_t count ) {
-    return malloc(count);
+    return cb_malloc(count);
 }
 
 void operator delete(void* ptr ) noexcept
 {
-    free(ptr);
+    cb_free(ptr);
 }
 #endif // HAVE_JEMALLOC
 

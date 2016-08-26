@@ -623,11 +623,11 @@ static int edit_docinfo_hook(DocInfo **info, const sized_buf *item) {
                 (*info)->content_meta) {
             size_t uncompr_len;
             snappy_uncompressed_length(item->buf, item->size, &uncompr_len);
-            char *dbuf = (char *) malloc(uncompr_len);
+            char *dbuf = (char *) cb_malloc(uncompr_len);
             snappy_uncompress(item->buf, item->size, dbuf, &uncompr_len);
             data = (const unsigned char*)dbuf;
             ret = checkUTF8JSON(data, uncompr_len);
-            free(dbuf);
+            cb_free(dbuf);
         } else {
             data = (const unsigned char*)item->buf;
             ret = checkUTF8JSON(data, item->size);
@@ -640,7 +640,7 @@ static int edit_docinfo_hook(DocInfo **info, const sized_buf *item) {
             datatype = PROTOCOL_BINARY_RAW_BYTES;
         }
 
-        DocInfo *docinfo = (DocInfo *) calloc (1,
+        DocInfo *docinfo = (DocInfo *) cb_calloc(1,
                                                sizeof(DocInfo) +
                                                (*info)->id.size +
                                                (*info)->rev_meta.size +
@@ -684,7 +684,7 @@ static int edit_docinfo_hook(DocInfo **info, const sized_buf *item) {
     } else if ((*info)->rev_meta.size == V1_META_LEN) {
         // Metadata doesn't have conflict_resolution_mode,
         // provision space for this flag.
-        DocInfo *docinfo = (DocInfo *) calloc (1,
+        DocInfo *docinfo = (DocInfo *) cb_calloc(1,
                                                sizeof(DocInfo) +
                                                (*info)->id.size +
                                                (*info)->rev_meta.size +

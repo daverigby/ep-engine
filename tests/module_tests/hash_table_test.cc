@@ -397,7 +397,7 @@ TEST_F(HashTableTest, SizeStats) {
 
     const std::string k("somekey");
     const size_t itemSize(16 * 1024);
-    char *someval(static_cast<char*>(calloc(1, itemSize)));
+    char *someval(static_cast<char*>(cb_calloc(1, itemSize)));
     EXPECT_TRUE(someval);
 
     Item i(k.data(), k.length(), 0, 0, someval, itemSize);
@@ -410,7 +410,7 @@ TEST_F(HashTableTest, SizeStats) {
     EXPECT_EQ(0, ht.cacheSize.load());
     EXPECT_EQ(initialSize, global_stats.currentSize.load());
 
-    free(someval);
+    cb_free(someval);
 }
 
 TEST_F(HashTableTest, SizeStatsFlush) {
@@ -422,7 +422,7 @@ TEST_F(HashTableTest, SizeStatsFlush) {
 
     const std::string k("somekey");
     const size_t itemSize(16 * 1024);
-    char *someval(static_cast<char*>(calloc(1, itemSize)));
+    char *someval(static_cast<char*>(cb_calloc(1, itemSize)));
     EXPECT_TRUE(someval);
 
     Item i(k.data(), k.length(), 0, 0, someval, itemSize);
@@ -435,7 +435,7 @@ TEST_F(HashTableTest, SizeStatsFlush) {
     EXPECT_EQ(0, ht.cacheSize.load());
     EXPECT_EQ(initialSize, global_stats.currentSize.load());
 
-    free(someval);
+    cb_free(someval);
 }
 
 TEST_F(HashTableTest, SizeStatsSoftDel) {
@@ -447,7 +447,7 @@ TEST_F(HashTableTest, SizeStatsSoftDel) {
 
     const std::string k("somekey");
     const size_t itemSize(16 * 1024);
-    char *someval(static_cast<char*>(calloc(1, itemSize)));
+    char *someval(static_cast<char*>(cb_calloc(1, itemSize)));
     EXPECT_TRUE(someval);
 
     Item i(k.data(), k.length(), 0, 0, someval, itemSize);
@@ -461,7 +461,7 @@ TEST_F(HashTableTest, SizeStatsSoftDel) {
     EXPECT_EQ(0, ht.cacheSize.load());
     EXPECT_EQ(initialSize, global_stats.currentSize.load());
 
-    free(someval);
+    cb_free(someval);
 }
 
 TEST_F(HashTableTest, SizeStatsSoftDelFlush) {
@@ -473,7 +473,7 @@ TEST_F(HashTableTest, SizeStatsSoftDelFlush) {
 
     const std::string k("somekey");
     const size_t itemSize(16 * 1024);
-    char *someval(static_cast<char*>(calloc(1, itemSize)));
+    char *someval(static_cast<char*>(cb_calloc(1, itemSize)));
     EXPECT_TRUE(someval);
 
     Item i(k.data(), k.length(), 0, 0, someval, itemSize);
@@ -487,7 +487,7 @@ TEST_F(HashTableTest, SizeStatsSoftDelFlush) {
     EXPECT_EQ(0, ht.cacheSize.load());
     EXPECT_EQ(initialSize, global_stats.currentSize.load());
 
-    free(someval);
+    cb_free(someval);
 }
 
 TEST_F(HashTableTest, SizeStatsEject) {
@@ -500,7 +500,7 @@ TEST_F(HashTableTest, SizeStatsEject) {
     const std::string k("somekey");
     std::string kstring(k);
     const size_t itemSize(16 * 1024);
-    char *someval(static_cast<char*>(calloc(1, itemSize)));
+    char *someval(static_cast<char*>(cb_calloc(1, itemSize)));
     EXPECT_TRUE(someval);
 
     Item i(k.data(), k.length(), 0, 0, someval, itemSize);
@@ -519,7 +519,7 @@ TEST_F(HashTableTest, SizeStatsEject) {
     EXPECT_EQ(0, ht.cacheSize.load());
     EXPECT_EQ(initialSize, global_stats.currentSize.load());
 
-    free(someval);
+    cb_free(someval);
 }
 
 TEST_F(HashTableTest, SizeStatsEjectFlush) {
@@ -532,7 +532,7 @@ TEST_F(HashTableTest, SizeStatsEjectFlush) {
     const std::string k("somekey");
     std::string kstring(k);
     const size_t itemSize(16 * 1024);
-    char *someval(static_cast<char*>(calloc(1, itemSize)));
+    char *someval(static_cast<char*>(cb_calloc(1, itemSize)));
     EXPECT_TRUE(someval);
 
     Item i(k.data(), k.length(), 0, 0, someval, itemSize);
@@ -551,7 +551,7 @@ TEST_F(HashTableTest, SizeStatsEjectFlush) {
     EXPECT_EQ(0, ht.cacheSize.load());
     EXPECT_EQ(initialSize, global_stats.currentSize.load());
 
-    free(someval);
+    cb_free(someval);
 }
 
 TEST_F(HashTableTest, ItemAge) {
@@ -588,7 +588,7 @@ TEST_F(HashTableTest, ItemAge) {
  *
  * (This must be static as putenv() essentially 'takes ownership' of
  * the provided array, so it is unsafe to use an automatic variable.
- * However, if we use the result of malloc() (i.e. the heap) then
+ * However, if we use the result of cb_malloc() (i.e. the heap) then
  * memory leak checkers (e.g. Valgrind) will report the memory as
  * leaked as it's impossible to free it).
  */
