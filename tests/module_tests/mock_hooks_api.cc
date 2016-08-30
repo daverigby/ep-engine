@@ -27,19 +27,19 @@
  */
 
 extern "C" {
-    static bool mock_add_new_hook(void (*)(const void* ptr, size_t size)) {
+    static bool mock_add_new_hook(void (*)(const void* ptr, size_t size, int tag)) {
         return false;
     }
 
-    static bool mock_remove_new_hook(void (*)(const void* ptr, size_t size)) {
+    static bool mock_remove_new_hook(void (*)(const void* ptr, size_t size, int tag)) {
         return false;
     }
 
-    static bool mock_add_delete_hook(void (*)(const void* ptr)) {
+    static bool mock_add_delete_hook(void (*)(const void* ptr, int tag)) {
         return false;
     }
 
-    static bool mock_remove_delete_hook(void (*)(const void* ptr)) {
+    static bool mock_remove_delete_hook(void (*)(const void* ptr, int tag)) {
         return false;
     }
 

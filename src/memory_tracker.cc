@@ -72,7 +72,7 @@ void MemoryTracker::destroyInstance() {
 }
 
 extern "C" {
-    static void NewHook(const void* ptr, size_t) {
+    static void NewHook(const void* ptr, size_t, int tag) {
         if (ptr != NULL) {
             void* p = const_cast<void*>(ptr);
             size_t alloc = getHooksApi()->get_allocation_size(p);
@@ -80,7 +80,7 @@ extern "C" {
         }
     }
 
-    static void DeleteHook(const void* ptr) {
+    static void DeleteHook(const void* ptr, int tag) {
         if (ptr != NULL) {
             void* p = const_cast<void*>(ptr);
             size_t alloc = getHooksApi()->get_allocation_size(p);
