@@ -3673,6 +3673,20 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doMemoryStats(const void *cookie,
                                                            ADD_STAT add_stat) {
     add_casted_stat("bytes", stats.getTotalMemoryUsed(), add_stat, cookie);
     add_casted_stat("mem_used", stats.getTotalMemoryUsed(), add_stat, cookie);
+
+    add_casted_stat("mem_used[TC]",
+                    stats.memoryPerAllocator[static_cast<int>(MallocTag::TCMalloc)],
+                    add_stat, cookie);
+    add_casted_stat("mem_used[je]",
+                    stats.memoryPerAllocator[static_cast<int>(MallocTag::jemalloc)],
+                    add_stat, cookie);
+    add_casted_stat("mem_used[C++]",
+                    stats.memoryPerAllocator[static_cast<int>(MallocTag::CxxNew)],
+                    add_stat, cookie);
+    add_casted_stat("mem_used[CB]",
+                    stats.memoryPerAllocator[static_cast<int>(MallocTag::CBMalloc)],
+                    add_stat, cookie);
+
     add_casted_stat("ep_kv_size", stats.currentSize, add_stat, cookie);
     add_casted_stat("ep_value_size", stats.totalValueSize, add_stat, cookie);
     add_casted_stat("ep_overhead", stats.memOverhead, add_stat, cookie);

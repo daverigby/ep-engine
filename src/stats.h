@@ -22,6 +22,7 @@
 
 #include <memcached/engine.h>
 
+#include <array>
 #include <map>
 
 #include "atomic.h"
@@ -311,6 +312,9 @@ public:
     AtomicValue<size_t> numItem;
     //! The total amount of memory used by this bucket (From memory tracking)
     AtomicValue<size_t> totalMemory;
+
+    std::array<AtomicValue<size_t>, 4> memoryPerAllocator;
+
     //! True if the memory usage tracker is enabled.
     AtomicValue<bool> memoryTrackerEnabled;
     //! Whether or not to force engine shutdown.

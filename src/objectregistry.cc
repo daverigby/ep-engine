@@ -178,7 +178,7 @@ void ObjectRegistry::setStats(AtomicValue<size_t>* init_track) {
     initial_track->set(init_track);
 }
 
-bool ObjectRegistry::memoryAllocated(size_t mem) {
+bool ObjectRegistry::memoryAllocated(size_t mem, MallocTag tag) {
     EventuallyPersistentEngine *engine = th->get();
     if (initial_track->get()) {
         initial_track->get()->fetch_add(mem);
@@ -188,10 +188,11 @@ bool ObjectRegistry::memoryAllocated(size_t mem) {
     }
     EPStats &stats = engine->getEpStats();
     stats.totalMemory.fetch_add(mem);
+    stats.memoryPerAllocator[static_cast<int>(tag)].fetch_add(mem);
     return true;
 }
 
-bool ObjectRegistry::memoryDeallocated(size_t mem) {
+bool ObjectRegistry::memoryDeallocated(size_t mem, MallocTag tag) {
     EventuallyPersistentEngine *engine = th->get();
     if (initial_track->get()) {
         initial_track->get()->fetch_sub(mem);
@@ -201,5 +202,6 @@ bool ObjectRegistry::memoryDeallocated(size_t mem) {
     }
     EPStats &stats = engine->getEpStats();
     stats.totalMemory.fetch_sub(mem);
+    stats.memoryPerAllocator[static_cast<int>(tag)].fetch_sub(mem);
     return true;
 }

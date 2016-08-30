@@ -76,7 +76,7 @@ extern "C" {
         if (ptr != NULL) {
             void* p = const_cast<void*>(ptr);
             size_t alloc = getHooksApi()->get_allocation_size(p);
-            ObjectRegistry::memoryAllocated(alloc);
+            ObjectRegistry::memoryAllocated(alloc, static_cast<MallocTag>(tag));
         }
     }
 
@@ -84,7 +84,7 @@ extern "C" {
         if (ptr != NULL) {
             void* p = const_cast<void*>(ptr);
             size_t alloc = getHooksApi()->get_allocation_size(p);
-            ObjectRegistry::memoryDeallocated(alloc);
+            ObjectRegistry::memoryDeallocated(alloc, static_cast<MallocTag>(tag));
         }
     }
 }

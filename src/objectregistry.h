@@ -21,6 +21,8 @@
 
 #include "atomic.h"
 
+#include <platform/cb_malloc.h>
+
 class EventuallyPersistentEngine;
 class Blob;
 class Item;
@@ -51,8 +53,8 @@ public:
                                                       bool want_old_thread_local = false);
 
     static void setStats(AtomicValue<size_t>* init_track);
-    static bool memoryAllocated(size_t mem);
-    static bool memoryDeallocated(size_t mem);
+    static bool memoryAllocated(size_t mem, MallocTag tag);
+    static bool memoryDeallocated(size_t mem, MallocTag tag);
 };
 
 #endif  // SRC_OBJECTREGISTRY_H_
