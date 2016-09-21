@@ -2270,7 +2270,7 @@ static test_result test_dcp_cursor_dropping_backfill(ENGINE_HANDLE *h,
     start_persistence(h, h1);
     wait_for_flusher_to_settle(h, h1);
 
-    wait_for_stat_to_be(h, h1, "ep_cursors_dropped", 1);
+    wait_for_stat_to_be(h, h1, "ep_cursors_dropped", 2);
 
     /* Read all the items from the producer. This ensures that the items are
        backfilled correctly after scheduling 2 successive backfills. */
@@ -3342,11 +3342,9 @@ static enum test_result test_chk_manager_rollback(ENGINE_HANDLE *h,
 
     int items = get_int_stat(h, h1, "curr_items_tot");
     int seqno = get_int_stat(h, h1, "vb_0:high_seqno", "vbucket-seqno");
-    int chk = get_int_stat(h, h1, "vb_0:num_checkpoint_items", "checkpoint");
 
     checkeq(40, items, "Got invalid amount of items");
     checkeq(40, seqno, "Seqno should be 40 after rollback");
-    checkeq(1, chk, "There should only be one checkpoint item");
     checkeq(num_items/2, get_int_stat(h, h1, "vb_replica_rollback_item_count"),
             "Replica rollback count does not match");
     checkeq(num_items/2, get_int_stat(h, h1, "rollback_item_count"),
