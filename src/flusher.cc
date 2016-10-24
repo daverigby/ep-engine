@@ -243,8 +243,8 @@ uint16_t Flusher::decrCommitInterval(void) {
 }
 
 void Flusher::flushVB(void) {
-    if (store->diskFlushAll && shard->getId() != EP_PRIMARY_SHARD) {
-        // another shard is doing disk flush
+    if (store->diskDeleteAll && shard->getId() != EP_PRIMARY_SHARD) {
+        // another shard is doing disk deleteAll.
         bool inverse = false;
         pendingMutation.compare_exchange_strong(inverse, true);
         return;

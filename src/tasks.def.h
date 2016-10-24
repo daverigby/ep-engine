@@ -56,7 +56,7 @@ TASK(BackfillVisitorTask, 8)
 TASK(VBDeleteTask, 1)
 TASK(RollbackTask, 1)
 TASK(CompactVBucketTask, 2)
-TASK(FlushAllTask, 3)
+TASK(DeleteAllTask, 3)
 TASK(FlusherTask, 5)
 TASK(StatSnap, 9)
 

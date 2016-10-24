@@ -317,18 +317,18 @@ private:
 };
 
 /**
- * A task that performs the bucket flush operation.
+ * A task that performs the bucket deleteAll operation.
  */
-class FlushAllTask : public GlobalTask {
+class DeleteAllTask : public GlobalTask {
 public:
-    FlushAllTask(EventuallyPersistentEngine *e, double when)
-        : GlobalTask(e, TaskId::FlushAllTask, when, false) {}
+    DeleteAllTask(EventuallyPersistentEngine *e, double when)
+        : GlobalTask(e, TaskId::DeleteAllTask, when, false) {}
 
     bool run();
 
     std::string getDescription() {
         std::stringstream ss;
-        ss << "Performing flush_all operation.";
+        ss << "Performing delete_all (flush) operation.";
         return ss.str();
     }
 };

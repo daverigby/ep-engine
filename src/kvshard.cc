@@ -88,7 +88,7 @@ BgFetcher *KVShard::getBgFetcher() {
 }
 
 void KVShard::notifyFlusher() {
-    flusher->notifyFlushEvent();
+    flusher->notifyDeleteAllEvent();
 }
 
 RCPtr<VBucket> KVShard::getBucket(uint16_t id) const {

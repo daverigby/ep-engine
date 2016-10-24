@@ -154,7 +154,7 @@ bool MultiBGFetcherTask::run() {
     return bgfetcher->run(this);
 }
 
-bool FlushAllTask::run() {
+bool DeleteAllTask::run() {
     engine->getEpStore()->reset();
     return false;
 }

@@ -717,10 +717,10 @@ public:
     }
 
     bool isFlushAllScheduled() {
-        return diskFlushAll.load();
+        return diskDeleteAll.load();
     }
 
-    bool scheduleFlushAllTask(const void* cookie, time_t when);
+    bool scheduleDeleteAllTask(const void* cookie, time_t when);
 
     void setFlushAllComplete();
 
@@ -1028,12 +1028,12 @@ protected:
 
     AtomicValue<size_t> bgFetchQueue;
 
-    AtomicValue<bool> diskFlushAll;
+    AtomicValue<bool> diskDeleteAll;
     struct FlushAllTaskCtx {
         FlushAllTaskCtx(): delayFlushAll(true), cookie(NULL) {}
         AtomicValue<bool> delayFlushAll;
         const void* cookie;
-    } flushAllTaskCtx;
+    } deleteAllTaskCtx;
 
     Mutex vbsetMutex;
     uint32_t bgFetchDelay;

@@ -270,7 +270,7 @@ EventuallyPersistentStore::EventuallyPersistentStore(
     vbMap(theEngine.getConfiguration(), *this),
     defragmenterTask(NULL),
     bgFetchQueue(0),
-    diskFlushAll(false), bgFetchDelay(0),
+    diskDeleteAll(false), bgFetchDelay(0),
     backfillMemoryThreshold(0.95),
     statsSnapshotTaskId(0), lastTransTimePerItem(0)
 {
@@ -1951,7 +1951,7 @@ GetValue EventuallyPersistentStore::getInternal(const std::string &key,
                     v->getBySeqno(), false, v->getNRUValue());
         return rv;
     } else {
-        if (eviction_policy == VALUE_ONLY || diskFlushAll) {
+        if (eviction_policy == VALUE_ONLY || diskDeleteAll) {
             GetValue rv;
             return rv;
         }
@@ -2887,9 +2887,9 @@ void EventuallyPersistentStore::reset() {
 
     ++stats.diskQueueSize;
     bool inverse = true;
-    flushAllTaskCtx.delayFlushAll.compare_exchange_strong(inverse, false);
+    deleteAllTaskCtx.delayFlushAll.compare_exchange_strong(inverse, false);
     // Waking up (notifying) one flusher is good enough for diskFlushAll
-    vbMap.shards[EP_PRIMARY_SHARD]->getFlusher()->notifyFlushEvent();
+    vbMap.shards[EP_PRIMARY_SHARD]->getFlusher()->notifyDeleteAllEvent();
 }
 
 /**
@@ -3074,13 +3074,13 @@ private:
     DISALLOW_COPY_AND_ASSIGN(PersistenceCallback);
 };
 
-bool EventuallyPersistentStore::scheduleFlushAllTask(const void* cookie,
+bool EventuallyPersistentStore::scheduleDeleteAllTask(const void* cookie,
                                                      time_t when) {
     bool inverse = false;
-    if (diskFlushAll.compare_exchange_strong(inverse, true)) {
-        flushAllTaskCtx.cookie = cookie;
-        flushAllTaskCtx.delayFlushAll.compare_exchange_strong(inverse, true);
-        ExTask task = new FlushAllTask(&engine, static_cast<double>(when));
+    if (diskDeleteAll.compare_exchange_strong(inverse, true)) {
+        deleteAllTaskCtx.cookie = cookie;
+        deleteAllTaskCtx.delayFlushAll.compare_exchange_strong(inverse, true);
+        ExTask task = new DeleteAllTask(&engine, static_cast<double>(when));
         ExecutorPool::get()->schedule(task, NONIO_TASK_IDX);
         return true;
     } else {
@@ -3091,13 +3091,13 @@ bool EventuallyPersistentStore::scheduleFlushAllTask(const void* cookie,
 void EventuallyPersistentStore::setFlushAllComplete() {
     // Notify memcached about flushAll task completion, and
     // set diskFlushall flag to false
-    if (flushAllTaskCtx.cookie) {
-        engine.notifyIOComplete(flushAllTaskCtx.cookie, ENGINE_SUCCESS);
+    if (deleteAllTaskCtx.cookie) {
+        engine.notifyIOComplete(deleteAllTaskCtx.cookie, ENGINE_SUCCESS);
     }
     bool inverse = false;
-    flushAllTaskCtx.delayFlushAll.compare_exchange_strong(inverse, true);
+    deleteAllTaskCtx.delayFlushAll.compare_exchange_strong(inverse, true);
     inverse = true;
-    diskFlushAll.compare_exchange_strong(inverse, false);
+    diskDeleteAll.compare_exchange_strong(inverse, false);
 }
 
 void EventuallyPersistentStore::flushOneDeleteAll() {
@@ -3118,7 +3118,7 @@ void EventuallyPersistentStore::flushOneDeleteAll() {
 
 int EventuallyPersistentStore::flushVBucket(uint16_t vbid) {
     KVShard *shard = vbMap.getShardByVbId(vbid);
-    if (diskFlushAll && !flushAllTaskCtx.delayFlushAll) {
+    if (diskDeleteAll && !deleteAllTaskCtx.delayFlushAll) {
         if (shard->getId() == EP_PRIMARY_SHARD) {
             flushOneDeleteAll();
         } else {
@@ -3407,7 +3407,7 @@ void EventuallyPersistentStore::queueDirty(RCPtr<VBucket> &vb,
 
         if (rv) {
             KVShard* shard = vbMap.getShardByVbId(vb->getId());
-            shard->getFlusher()->notifyFlushEvent();
+            shard->getFlusher()->notifyDeleteAllEvent();
         }
 
         // Now notify replication
@@ -3444,7 +3444,7 @@ void EventuallyPersistentStore::tapQueueDirty(VBucket &vb,
 
     if (queued) {
         KVShard* shard = vbMap.getShardByVbId(vb.getId());
-        shard->getFlusher()->notifyFlushEvent();
+        shard->getFlusher()->notifyDeleteAllEvent();
     }
 }
 

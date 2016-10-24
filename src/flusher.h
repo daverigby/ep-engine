@@ -79,10 +79,10 @@ public:
     enum flusher_state state() const;
     const char * stateName() const;
 
-    void notifyFlushEvent(void) {
+    void notifyDeleteAllEvent(void) {
         // By setting pendingMutation to true we are guaranteeing that the given
         // flusher will iterate the entire vbuckets under its shard from the
-        // begining and flush for all mutations
+        // begining and delete for all mutations
         bool disable = false;
         if (pendingMutation.compare_exchange_strong(disable, true)) {
             wake();

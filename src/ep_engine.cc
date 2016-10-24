@@ -290,7 +290,7 @@ extern "C" {
     static ENGINE_ERROR_CODE EvpFlush(ENGINE_HANDLE* handle,
                                       const void* cookie, time_t when)
     {
-        ENGINE_ERROR_CODE err_code = getHandle(handle)->flush(cookie, when);
+        ENGINE_ERROR_CODE err_code = getHandle(handle)->deleteAll(cookie, when);
         releaseHandle(handle);
         return err_code;
     }
@@ -2244,8 +2244,8 @@ void EventuallyPersistentEngine::destroy(bool force) {
     }
 }
 
-ENGINE_ERROR_CODE EventuallyPersistentEngine::flush(const void *cookie,
-                                                    time_t when){
+ENGINE_ERROR_CODE EventuallyPersistentEngine::deleteAll(const void *cookie,
+                                                        time_t when){
     if (!flushAllEnabled) {
         return ENGINE_ENOTSUP;
     }
@@ -2265,18 +2265,18 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::flush(const void *cookie,
         // if yes, if the atomic variable weren't false, then
         // we will assume that a flushAll has been scheduled
         // already and return TMPFAIL.
-        if (epstore->scheduleFlushAllTask(cookie, when)) {
+        if (epstore->scheduleDeleteAllTask(cookie, when)) {
             storeEngineSpecific(cookie, this);
             return ENGINE_EWOULDBLOCK;
         } else {
-            LOG(EXTENSION_LOG_INFO, "Tried to trigger a bucket flush, but"
-                    "there seems to be a task running already!");
+            LOG(EXTENSION_LOG_INFO, "Tried to trigger a bucket deletAll "
+                    "(aka Flush), but there seems to be a task running already!");
             return ENGINE_TMPFAIL;
         }
 
     } else {
         storeEngineSpecific(cookie, NULL);
-        LOG(EXTENSION_LOG_NOTICE, "Completed bucket flush operation");
+        LOG(EXTENSION_LOG_NOTICE, "Completed bucket deleteAll (flush) operation");
         return ENGINE_SUCCESS;
     }
 }
@@ -2787,7 +2787,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::tapNotify(const void *cookie,
         ret = processTapAck(cookie, tap_seqno, tap_flags, k);
         break;
     case TAP_FLUSH:
-        ret = flush(cookie, 0);
+        ret = deleteAll(cookie, 0);
         LOG(EXTENSION_LOG_NOTICE, "%s Received flush.\n",
             connection->logHeader());
         break;

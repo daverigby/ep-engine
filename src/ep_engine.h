@@ -461,7 +461,12 @@ public:
     }
 
 
-    ENGINE_ERROR_CODE flush(const void *cookie, time_t when);
+    /**
+     * Delete all items from the bucket (aka "Flush" as per external API -
+     * not to be confused with 'flush' internal which refers to writing pending
+     * modifications to disk).
+     */
+    ENGINE_ERROR_CODE deleteAll(const void *cookie, time_t when);
 
     uint16_t walkTapQueue(const void *cookie, item **itm, void **es,
                           uint16_t *nes, uint8_t *ttl, uint16_t *flags,
