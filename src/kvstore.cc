@@ -26,7 +26,7 @@
 #ifdef EP_USE_FORESTDB
 #include "forest-kvstore/forest-kvstore.h"
 #endif
-#include "leveldb-kvstore/leveldb-kvstore.h"
+#include "leveldb-kvstore/leveldb-kvstore.hh"
 #include "statwriter.h"
 #include "kvstore.h"
 #include "vbucket.h"

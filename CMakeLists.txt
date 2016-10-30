@@ -29,6 +29,7 @@ INCLUDE_DIRECTORIES(BEFORE ${CMAKE_INSTALL_PREFIX}/include
                            ${Memcached_SOURCE_DIR}/include
                            ${Couchstore_SOURCE_DIR}/include
                            ${phosphor_SOURCE_DIR}/include
+                           ${CMAKE_CURRENT_SOURCE_DIR}/embedded/leveldb/include
                            ${CMAKE_CURRENT_BINARY_DIR})
 
 INCLUDE_DIRECTORIES(AFTER ${Memcached_BINARY_DIR}/include)
@@ -147,6 +148,45 @@ ADD_CUSTOM_COMMAND(OUTPUT
 SET(KVSTORE_SOURCE src/kvstore.cc)
 SET(COUCH_KVSTORE_SOURCE src/couch-kvstore/couch-kvstore.cc
             src/couch-kvstore/couch-fs-stats.cc)
+SET(LEVELDB_KVSTORE_SOURCE src/leveldb-kvstore/leveldb-kvstore.cc)
+SET(LEVELDB_SOURCE
+       embedded/leveldb/db/builder.cc
+       embedded/leveldb/db/c.cc
+       embedded/leveldb/db/db_impl.cc
+       embedded/leveldb/db/db_iter.cc
+       embedded/leveldb/db/filename.cc
+       embedded/leveldb/db/dbformat.cc
+       embedded/leveldb/db/log_reader.cc
+       embedded/leveldb/db/log_writer.cc
+       embedded/leveldb/db/memtable.cc
+       embedded/leveldb/db/repair.cc
+       embedded/leveldb/db/table_cache.cc
+       embedded/leveldb/db/version_edit.cc
+       embedded/leveldb/db/version_set.cc
+       embedded/leveldb/db/write_batch.cc
+       embedded/leveldb/port/port_posix.cc
+       embedded/leveldb/table/block.cc
+       embedded/leveldb/table/block_builder.cc
+       embedded/leveldb/table/format.cc
+       embedded/leveldb/table/iterator.cc
+       embedded/leveldb/table/merger.cc
+       embedded/leveldb/table/table.cc
+       embedded/leveldb/table/table_builder.cc
+       embedded/leveldb/table/two_level_iterator.cc
+       embedded/leveldb/util/arena.cc
+       embedded/leveldb/util/cache.cc
+       embedded/leveldb/util/coding.cc
+       embedded/leveldb/util/comparator.cc
+       embedded/leveldb/util/crc32c.cc
+       embedded/leveldb/util/env.cc
+       embedded/leveldb/util/env_posix.cc
+       embedded/leveldb/util/hash.cc
+       embedded/leveldb/util/histogram.cc
+       embedded/leveldb/util/logging.cc
+       embedded/leveldb/util/options.cc
+       embedded/leveldb/util/status.cc)
+SET(LEVELDB_STATIC_LIB ${CMAKE_CURRENT_SOURCE_DIR}/embedded/leveldb/libleveldb.a)
+
 SET(OBJECTREGISTRY_SOURCE src/objectregistry.cc)
 SET(CONFIG_SOURCE src/configuration.cc
   ${CMAKE_CURRENT_BINARY_DIR}/src/generated_configuration.cc)
@@ -229,6 +269,7 @@ ADD_LIBRARY(ep_objs OBJECT
             ${KVSTORE_SOURCE}
             ${COUCH_KVSTORE_SOURCE}
             ${FOREST_KVSTORE_SOURCE}
+            ${LEVELDB_KVSTORE_SOURCE}
             ${COLLECTIONS_SOURCE})
 SET_PROPERTY(TARGET ep_objs PROPERTY POSITION_INDEPENDENT_CODE 1)
 
@@ -299,7 +340,7 @@ TARGET_INCLUDE_DIRECTORIES(ep-engine_ep_unit_tests
 TARGET_LINK_LIBRARIES(ep-engine_ep_unit_tests couchstore cJSON dirutils
                       engine_utilities ${EP_FORESTDB_LIB}
                       gtest gmock JSON_checker mcd_util platform
-                      phosphor xattr cbcompress ${MALLOC_LIBRARIES})
+                      phosphor xattr cbcompress ${MALLOC_LIBRARIES} ${LEVELDB_STATIC_LIB})
 
 ADD_EXECUTABLE(ep-engine_atomic_ptr_test
   tests/module_tests/atomic_ptr_test.cc
@@ -345,7 +386,7 @@ ADD_EXECUTABLE(ep_engine_benchmarks
 
 TARGET_LINK_LIBRARIES(ep_engine_benchmarks benchmark platform xattr couchstore
         cJSON dirutils engine_utilities gtest gmock JSON_checker mcd_util
-        cbcompress ${MALLOC_LIBRARIES})
+        cbcompress ${MALLOC_LIBRARIES} ${LEVELDB_STATIC_LIB})
 TARGET_INCLUDE_DIRECTORIES(ep_engine_benchmarks PUBLIC
                            ${benchmark_SOURCE_DIR}/include
                            tests
@@ -367,7 +408,7 @@ ADD_EXECUTABLE(ep-engine_sizes src/sizes.cc
 TARGET_LINK_LIBRARIES(ep-engine_sizes cJSON JSON_checker
   engine_utilities couchstore
   ${EP_FORESTDB_LIB} dirutils cbcompress platform phosphor xattr
-  ${LIBEVENT_LIBRARIES})
+  ${LIBEVENT_LIBRARIES} ${LEVELDB_STATIC_LIB})
 
 ADD_LIBRARY(ep_testsuite SHARED
    tests/ep_testsuite.cc
