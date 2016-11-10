@@ -278,7 +278,8 @@ ADD_LIBRARY(ep SHARED $<TARGET_OBJECTS:ep_objs>)
 SET_TARGET_PROPERTIES(ep PROPERTIES PREFIX "")
 TARGET_LINK_LIBRARIES(ep cJSON JSON_checker couchstore ${EP_FORESTDB_LIB}
                       engine_utilities dirutils cbcompress
-                      platform phosphor xattr ${LIBEVENT_LIBRARIES})
+                      platform phosphor xattr ${LIBEVENT_LIBRARIES}
+                      ${LEVELDB_STATIC_LIB})
 
 # Single executable containing all class-level unit tests involving
 # EventuallyPersistentEngine driven by GoogleTest.
