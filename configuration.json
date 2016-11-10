@@ -84,7 +84,7 @@
             }
         },
         "backend": {
-            "default": "couchdb",
+            "default": "leveldb",
             "dynamic": false,
             "type": "std::string",
             "validator": {

@@ -20,6 +20,9 @@ LevelDBKVStore::LevelDBKVStore(KVStoreConfig &config)
       scanCounter(0) {
     keyBuffer = static_cast<char*>(calloc(1, sizeof(uint16_t)
                                           + std::numeric_limits<uint8_t>::max()));
+    cachedVBStates.reserve(configuration.getMaxVBuckets());
+    cachedVBStates.assign(configuration.getMaxVBuckets(), nullptr);
+
     adjustValBuffer(DEFAULT_VAL_SIZE);
     open();
 }

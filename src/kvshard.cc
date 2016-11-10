@@ -28,6 +28,7 @@
 #include "kvshard.h"
 
 /* [EPHE TODO]: Consider not using KVShard for ephemeral bucket */
+
 KVShard::KVShard(uint16_t id, KVBucket& kvBucket)
     : kvConfig(kvBucket.getEPEngine().getConfiguration(), id),
       vbuckets(kvConfig.getMaxVBuckets()),
@@ -38,6 +39,8 @@ KVShard::KVShard(uint16_t id, KVBucket& kvBucket)
         rwStore.reset(KVStoreFactory::create(kvConfig, false));
         roStore.reset(KVStoreFactory::create(kvConfig, true));
     } else if (backend == "forestdb") {
+        rwStore.reset(KVStoreFactory::create(kvConfig));
+    } else if (backend == "leveldb") {
         rwStore.reset(KVStoreFactory::create(kvConfig));
     } else {
         throw std::logic_error(

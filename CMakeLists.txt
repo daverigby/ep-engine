@@ -577,6 +577,13 @@ FUNCTION(ADD_TESTSUITE name timeout)
              COMMAND ${_cmdline} -v -e "bucket_type=ephemeral$<SEMICOLON>dbname=./${name}.ephemeral.db")
     SET_TESTS_PROPERTIES(${name}.ephemeral PROPERTIES TIMEOUT ${timeout})
   ENDIF()
+
+  ADD_TEST(NAME ${name}.value_eviction.leveldb
+         COMMAND ${_cmdline} -v -e "dbname=./${name}.value_eviction.leveldb$<SEMICOLON>backend=leveldb")
+  ADD_TEST(NAME ${name}.full_eviction.leveldb
+         COMMAND ${_cmdline} -v -e "item_eviction_policy=full_eviction$<SEMICOLON>dbname=./${name}.full_eviction.leveldb$<SEMICOLON>backend=leveldb")
+  SET_TESTS_PROPERTIES(${name}.value_eviction.leveldb PROPERTIES TIMEOUT ${timeout})
+  SET_TESTS_PROPERTIES(${name}.full_eviction.leveldb PROPERTIES TIMEOUT ${timeout})
 ENDFUNCTION()
 
 ADD_TESTSUITE(ep_testsuite 1800)
