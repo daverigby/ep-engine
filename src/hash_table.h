@@ -396,6 +396,22 @@ public:
                                     item_eviction_policy_t policy,
                                     bool isReplication = false);
 
+
+    /**
+     * Create a copy of the StoredValue in the hash table
+     * Assumes that the respective hash bucket lock is already grabbed
+     *
+     * @param htLock Hash bucket lock that must be grabbed already
+     * @param v StoredValue to be copied
+     *
+     * @return Pointer to the StoredValue copy
+     *
+     * NOTE: The copied (returned) StoredValue is maintained by the hash table.
+     *       The caller must not free the memory.
+     */
+    StoredValue* unlocked_copyStoredValue(std::unique_lock<std::mutex>& htLock,
+                                          const Item& itm);
+
     /**
      * Mark the given record logically deleted.
      *
@@ -552,6 +568,19 @@ public:
     }
 
     /**
+     * Removes a StoredValue in the hash table, but does not delete it
+     * It will not be found in HT during HT delete. Hence the deletion of this
+     * removed StoredValue must be handled by another (maybe calling) module.
+     *
+     * Assumes that the respective hash bucket lock is already grabbed
+     *
+     * @param htLock Hash bucket lock that must be grabbed already
+     * @param key
+     */
+    void unlocked_remove(std::unique_lock<std::mutex>& htLock,
+                         const const_char_buffer key);
+
+    /**
      * Visit all items within this hashtable.
      */
     void visit(HashTableVisitor &visitor);
@@ -666,6 +695,19 @@ private:
 
     inline bool isActive() const { return activeState; }
     inline void setActiveState(bool newv) { activeState = newv; }
+
+    /**
+     * Returns the hash bucket number for a given key
+     * Assumes that the respective hash bucket lock is already grabbed
+     *
+     * @param key
+     *
+     * @return hash bucket for the key
+     */
+    inline int unlocked_getBucket(const const_char_buffer key) {
+        int h = hash(key.data(), key.size());
+        return getBucketForHash(h);
+    }
 
     std::atomic<size_t> size;
     size_t               n_locks;

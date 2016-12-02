@@ -588,6 +588,16 @@ add_type_t HashTable::unlocked_addTempItem(int &bucket_num,
                         isReplication);
 }
 
+StoredValue* HashTable::unlocked_copyStoredValue(
+                                        std::unique_lock<std::mutex>& htLock,
+                                        const Item& itm) {
+    int bucket_num = unlocked_getBucket(itm.getKey());
+    values[bucket_num] = valFact(itm, values[bucket_num], *this);
+    ++numItems;
+    ++numTotalItems;
+    return values[bucket_num];
+}
+
 mutation_type_t HashTable::softDelete(const const_char_buffer key, uint64_t cas,
                                       item_eviction_policy_t policy) {
     if (!isActive()) {
@@ -686,6 +696,61 @@ StoredValue* HashTable::unlocked_find(const const_char_buffer key, int bucket_nu
         v = v->next;
     }
     return NULL;
+}
+
+void HashTable::unlocked_remove(std::unique_lock<std::mutex>& htLock,
+                                const const_char_buffer key) {
+    if (!isActive()) {
+        throw std::logic_error("HashTable::unlocked_remove: Cannot call on a "
+                               "non-active vb");
+    }
+    int bucket_num = unlocked_getBucket(key);
+    StoredValue *v = values[bucket_num];
+
+    // Special case empty bucket.
+    if (!v) {
+        throw std::logic_error("HashTable::unlocked_remove: Trying to remove a "
+                               "value in empty hash bucket");
+    }
+
+    // Special case the first one
+    if (v->hasKey(key)) {
+        if (!v->isDeleted() && v->isLocked(ep_current_time())) {
+            throw std::logic_error("HashTable::unlocked_remove: Trying to "
+                                   "remove a value which is locked");
+        }
+        values[bucket_num] = v->next;
+        if (v->isTempItem()) {
+            --numTempItems;
+        } else {
+            decrNumItems();
+            decrNumTotalItems();
+        }
+        return;
+    }
+
+    while (v->next) {
+        if (v->next->hasKey(key)) {
+            StoredValue *tmp = v->next;
+            if (!tmp->isDeleted() && tmp->isLocked(ep_current_time())) {
+                throw std::logic_error("HashTable::unlocked_remove: Try to "
+                                       "remove a value which is locked");
+            }
+            v->next = v->next->next;
+            if (v->isTempItem()) {
+                --numTempItems;
+            } else {
+                decrNumItems();
+                decrNumTotalItems();
+            }
+            return;
+        } else {
+            v = v->next;
+        }
+    }
+
+    throw std::logic_error("HashTable::unlocked_remove: Stored value not "
+                           "found");
 }
 
 bool HashTable::unlocked_del(const const_char_buffer key, int bucket_num) {

@@ -641,6 +641,80 @@ TEST_F(HashTableTest, MB21448_UnlockedSetWithCASDeleted) {
         << "When trying to replace-with-CAS a deleted item";
 }
 
+/* Test removal (but not deletion) of a HT element */
+TEST_F(HashTableTest, RemoveItem) {
+    /* Setup with 2 hash buckets and 1 lock */
+    HashTable ht(global_stats, 2, 1);
+
+    /* Write 5 items */
+    const int numItems = 5;
+    std::string val("value");
+
+    for (int i = 0; i < numItems; ++i) {
+        std::string key("key" + std::to_string(i));
+        Item item(key.data(), key.length(), 0, 0, val.data(), val.length());
+        EXPECT_EQ(WAS_CLEAN, ht.set(item));
+    }
+    EXPECT_EQ(numItems, ht.getNumItems());
+
+    std::string removeKey1("key" + std::to_string(0));
+
+    /* Before removing the HT element, get its pointer as it must be deleted
+     after the test */
+    std::unique_ptr<StoredValue> sv1(ht.find(removeKey1));
+
+    /* Remove element added first. This is mostly not a head element of a hash
+     bucket */
+    std::mutex fakeLock;
+    std::unique_lock<std::mutex> htLock(fakeLock);
+    ht.unlocked_remove(htLock, removeKey1);
+    EXPECT_EQ(numItems - 1, ht.getNumItems());
+
+    std::string removeKey2("key" + std::to_string(numItems - 1));
+
+    /* Before removing the HT element, get its pointer as it must be deleted
+     after the test */
+    std::unique_ptr<StoredValue> sv2(ht.find(removeKey2));
+
+    /* Remove element added last. This is certainly head element of a hash
+     bucket */
+    ht.unlocked_remove(htLock, removeKey2);
+    EXPECT_EQ(numItems - 2, ht.getNumItems());
+}
+
+/* Test copying an element in HT */
+TEST_F(HashTableTest, CopyDuplicate) {
+    /* Setup with 2 hash buckets and 1 lock */
+    HashTable ht(global_stats, 2, 1);
+
+    /* Write 3 items */
+    const int numItems = 3;
+    std::string val("value");
+
+    for (int i = 0; i < numItems; ++i) {
+        std::string key("key" + std::to_string(i));
+        Item item(key.data(), key.length(), 0, 0, val.data(), val.length());
+        EXPECT_EQ(WAS_CLEAN, ht.set(item));
+    }
+    EXPECT_EQ(numItems, ht.getNumItems());
+
+    /* Remove an element */
+    std::string removeKey("key" + std::to_string(0));
+    /* Before removing the HT element, get its pointer as it must be deleted
+     after the test */
+    std::unique_ptr<StoredValue> sv(ht.find(removeKey));
+    std::mutex fakeLock;
+    std::unique_lock<std::mutex> htLock(fakeLock);
+    ht.unlocked_remove(htLock, removeKey);
+    EXPECT_EQ(numItems - 1, ht.getNumItems());
+
+    /* Copy the same element back */
+    Item item(removeKey.data(), removeKey.length(), 0, 0, val.data(),
+              val.length());
+    ht.unlocked_copyStoredValue(htLock, item);
+    EXPECT_EQ(numItems, ht.getNumItems());
+}
+
 /* static storage for environment variable set by putenv().
  *
  * (This must be static as putenv() essentially 'takes ownership' of
