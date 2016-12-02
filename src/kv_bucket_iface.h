@@ -785,6 +785,22 @@ public:
      */
     virtual ENGINE_ERROR_CODE forceMaxCas(uint16_t vbucket, uint64_t cas) = 0;
 
+    /**
+     * Notifies Flusher of a new item on the checkpoint.
+     *
+     * @param vb the vbucket that contains the new item
+     * @param seqno Sequence number of the new item
+     */
+    virtual void notifyFlusherOnNewSeqno(uint16_t vbid) = 0;
+
+    /**
+     * Notifies DCP, TAP of a new item on the checkpoint.
+     *
+     * @param vb the vbucket that contains the new item
+     * @param seqno Sequence number of the new item
+     */
+    virtual void notifyReplicationOnNewSeqno(uint16_t vbid, int64_t seqno) = 0;
+
 protected:
 
     // Methods called during warmup

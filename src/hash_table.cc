@@ -351,6 +351,59 @@ mutation_type_t HashTable::unlocked_set(StoredValue*& v, Item& itm,
     return rv;
 }
 
+mutation_type_t HashTable::unlocked_updateStoredValue(
+                                        std::unique_lock<std::mutex>& htLock,
+                                        StoredValue& v, Item& itm,
+                                        bool hasMetaData) {
+    if (!isActive()) {
+        throw std::logic_error("HashTable::unlocked_updateStoredValue: Cannot "
+                               "call on a non-active object");
+    }
+
+    mutation_type_t rv = v.isClean() ? WAS_CLEAN : WAS_DIRTY;
+    if (!v.isResident() && !v.isDeleted() && !v.isTempItem()) {
+        decrNumNonResidentItems();
+    }
+
+    if (v.isTempItem()) {
+        --numTempItems;
+        ++numItems;
+        ++numTotalItems;
+    }
+
+    v.setValue(itm, *this, hasMetaData /*Preserve revSeqno*/);
+    return rv;
+}
+
+mutation_type_t HashTable::unlocked_addNewStoredValue(
+                                        std::unique_lock<std::mutex>& htLock,
+                                        StoredValue*& v, Item& itm,
+                                        bool hasMetaData) {
+    if (!isActive()) {
+        throw std::logic_error("HashTable::unlocked_set: Cannot call on a "
+                               "non-active object");
+    }
+
+    /* Add new StoredValue in hash table */
+    int bucket_num = getBucketForHash(hash(itm.getKey()));
+    v = valFact(itm, values[bucket_num], *this);
+    values[bucket_num] = v;
+    ++numItems;
+    ++numTotalItems;
+
+    if (!hasMetaData) {
+        /**
+         * Possibly, this item is being recreated. Conservatively assign it
+         * a seqno that is greater than the greatest seqno of all deleted
+         * items seen so far.
+         */
+        uint64_t seqno = getMaxDeletedRevSeqno() + 1;
+        v->setRevSeqno(seqno);
+        itm.setRevSeqno(seqno);
+    }
+    return WAS_CLEAN;
+}
+
 mutation_type_t HashTable::insert(Item &itm, item_eviction_policy_t policy,
                                   bool eject, bool partial) {
     if (!isActive()) {

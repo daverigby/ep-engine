@@ -690,12 +690,14 @@ public:
 
     /**
      * Queue an item to be written to persistent layer.
+     * @param seqLck Lock that serializes seq generation/updation in chk pt
      * @param vb the vbucket that a new item is pushed into.
      * @param qi item to be persisted.
      * @param generateBySeqno yes/no generate the seqno for the item
      * @return true if an item queued increases the size of persistence queue by 1.
      */
-    bool queueDirty(VBucket& vb, queued_item& qi,
+    bool queueDirty(std::unique_lock<std::mutex>& seqLck,
+                    VBucket& vb, queued_item& qi,
                     const GenerateBySeqno generateBySeqno,
                     const GenerateCas generateCas);
 
@@ -735,7 +737,7 @@ public:
      */
     size_t getNumItemsForCursor(const std::string &name);
 
-    void clear(vbucket_state_t vbState) {
+    void clear(std::unique_lock<std::mutex>& seqLh, vbucket_state_t vbState) {
         LockHolder lh(queueLock);
         clear_UNLOCKED(vbState, lastBySeqno);
     }
@@ -743,7 +745,8 @@ public:
     /**
      * Clear all the checkpoints managed by this checkpoint manager.
      */
-    void clear(RCPtr<VBucket> &vb, uint64_t seqno);
+    void clear(std::unique_lock<std::mutex>& seqLh, RCPtr<VBucket> &vb,
+               uint64_t seqno);
 
     /**
      * If a given cursor currently points to the checkpoint_end dummy item,
@@ -833,7 +836,7 @@ public:
         }
     }
 
-    void setBySeqno(int64_t seqno) {
+    void setBySeqno(std::unique_lock<std::mutex>& seqLh, int64_t seqno) {
         LockHolder lh(queueLock);
         lastBySeqno = seqno;
     }
@@ -848,7 +851,7 @@ public:
         return lastClosedChkBySeqno;
     }
 
-    int64_t nextBySeqno() {
+    int64_t nextBySeqno(std::unique_lock<std::mutex>& seqLh) {
         LockHolder lh(queueLock);
         return ++lastBySeqno;
     }

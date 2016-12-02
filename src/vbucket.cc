@@ -26,6 +26,7 @@
 #include "atomic.h"
 #include "bgfetcher.h"
 #include "ep_engine.h"
+#include "ep_types.h"
 
 #define STATWRITER_NAMESPACE vbucket
 #include "statwriter.h"
@@ -687,6 +688,227 @@ size_t VBucket::getNumOfKeysInFilter() {
         return bFilter->getNumOfKeysInFilter();
     } else {
         return 0;
+    }
+}
+
+void VBucket::chkQueueDirty(std::unique_lock<std::mutex>& seqLh,
+                            KVBucket* kvb, StoredValue& v,
+                            const GenerateBySeqno generateBySeqno,
+                            const GenerateCas generateCas) {
+    queued_item qi(v.toItem(false, getId()));
+
+    bool rv = checkpointManager.queueDirty(seqLh, *this, qi, generateBySeqno,
+                                           generateCas);
+
+    if (kvb) {
+        /* We need to unlock because notifyItem() notifies DCP conns and
+           streams where we grab 'streamMutex' (seqLock ==> streamMutex) and
+           in DCP we make calls to vb->getHighSeqno() where we grab 'seqLock'
+           (streaMutex ==> seqLock) there by causing a potential deadlock */
+        seqLh.unlock();
+        if (rv) {
+            kvb->notifyFlusherOnNewSeqno(getId());
+        }
+        kvb->notifyReplicationOnNewSeqno(getId(), v.getBySeqno());
+    }
+}
+
+void VBucket::tapQueueDirty(std::unique_lock<std::mutex>& seqLh,
+                            KVBucket* kvb, StoredValue& v,
+                            std::unique_lock<std::mutex>& plh,
+                            const GenerateBySeqno generateBySeqno) {
+    queued_item qi(v.toItem(false, getId()));
+
+    bool queued = queueBackfillItem(seqLh, qi, GenerateBySeqno::No);
+
+    /* During backfill on a TAP receiver we need to update the snapshot
+       range in the checkpoint. Has to be done here because in case of TAP
+       backfill, above, we use vb.queueBackfillItem() instead of
+       vb.checkpointManager.queueDirty() */
+    if ((GenerateBySeqno::Yes == generateBySeqno) ||
+        (GenerateBySeqno::AlreadyGenerated == generateBySeqno)) {
+        checkpointManager.resetSnapshotRange();
+    }
+
+    plh.unlock();
+
+    if (kvb) {
+        /* Unlock avoid a potential deadlock */
+        seqLh.unlock();
+        if (queued) {
+            kvb->notifyFlusherOnNewSeqno(getId());
+        }
+    }
+}
+
+mutation_type_t VBucket::set(Item &val, uint64_t cas,
+                             bool allowExisting, bool hasMetaData,
+                             item_eviction_policy_t policy) {
+    int bucket_num(0);
+    auto lh = ht.getLockedBucket(val.getKey(), &bucket_num);
+    StoredValue *v = ht.unlocked_find(val.getKey(), bucket_num, true, false);
+    VBSetCtx vbsetCtx(v, val, cas, allowExisting, hasMetaData, policy);
+    return htUnlockedSet(lh, vbsetCtx, nullptr);
+}
+
+mutation_type_t VBucket::htUnlockedSet(std::unique_lock<std::mutex>& htLock,
+                                       VBSetCtx& vbsetCtx,
+                                       KVBucket* kvb) {
+    if (!StoredValue::hasAvailableSpace(stats, vbsetCtx.itm,
+                                        vbsetCtx.isReplication)) {
+        return NOMEM;
+    }
+
+    mutation_type_t rv = NOT_FOUND;
+    StoredValue* v = vbsetCtx.v;
+
+    if (vbsetCtx.cas && vbsetCtx.policy == FULL_EVICTION &&
+        vbsetCtx.maybeKeyExists) {
+        if (!v || v->isTempInitialItem()) {
+            return NEED_BG_FETCH;
+        }
+    }
+
+    /*
+     * prior to checking for the lock, we should check if this object
+     * has expired. If so, then check if CAS value has been provided
+     * for this set op. In this case the operation should be denied since
+     * a cas operation for a key that doesn't exist is not a very cool
+     * thing to do. See MB 3252
+     */
+    if (v && v->isExpired(ep_real_time()) && !(vbsetCtx.hasMetaData)) {
+        if (v->isLocked(ep_current_time())) {
+            v->unlock();
+        }
+        if (vbsetCtx.cas) {
+            /* item has expired and cas value provided. Deny ! */
+            return NOT_FOUND;
+        }
+    }
+
+    if (v) {
+        if (!(vbsetCtx.allowExisting) && !v->isTempItem()) {
+            return INVALID_CAS;
+        }
+        if (v->isLocked(ep_current_time())) {
+            /*
+             * item is locked, deny if there is cas value mismatch
+             * or no cas value is provided by the user
+             */
+            if (vbsetCtx.cas != v->getCas()) {
+                return IS_LOCKED;
+            }
+            /* allow operation*/
+            v->unlock();
+        } else if (vbsetCtx.cas && vbsetCtx.cas != v->getCas()) {
+            if (v->isTempDeletedItem() ||
+                v->isTempNonExistentItem() ||
+                v->isDeleted()) {
+                return NOT_FOUND;
+            }
+            return INVALID_CAS;
+        }
+
+        /* Update the v with contents in itm, metadata and generate seqno and
+           cas if needed */
+        rv = updateStoredValue(htLock, vbsetCtx, kvb);
+    } else if (vbsetCtx.cas != 0) {
+        rv = NOT_FOUND;
+    } else {
+        rv = addNewStoredValue(htLock, vbsetCtx, kvb);
+    }
+
+    return rv;
+}
+
+mutation_type_t VBucket::updateStoredValue(
+                                        std::unique_lock<std::mutex>& htLock,
+                                        VBSetCtx& vbsetCtx,
+                                        KVBucket* kvb)
+{
+    /* Update HT */
+    mutation_type_t rv = ht.unlocked_updateStoredValue(htLock, *(vbsetCtx.v),
+                                                       vbsetCtx.itm,
+                                                       vbsetCtx.hasMetaData);
+
+    /* Generate seqno if needed */
+    std::unique_lock<std::mutex> lck(seqLock);
+    genSeqnoAndCas(lck, vbsetCtx, kvb);
+
+    /* Put on checkpoint or on tap backfill queue */
+    if (vbsetCtx.isTap) {
+        tapQueueDirty(lck, kvb, *(vbsetCtx.v), *(vbsetCtx.plh),
+                      vbsetCtx.generateBySeqno);
+    } else {
+        chkQueueDirty(lck, kvb, *(vbsetCtx.v), vbsetCtx.generateBySeqno,
+                      vbsetCtx.generateCas);
+    }
+    return rv;
+}
+
+mutation_type_t VBucket::addNewStoredValue(
+                                           std::unique_lock<std::mutex>& htLock,
+                                           VBSetCtx& vbsetCtx,
+                                           KVBucket* kvb)
+{
+    mutation_type_t rv = ht.unlocked_addNewStoredValue(htLock, vbsetCtx.v,
+                                                       vbsetCtx.itm,
+                                                       vbsetCtx.hasMetaData);
+
+    /* Generate seqno if needed */
+    std::unique_lock<std::mutex> lck(seqLock);
+    genSeqnoAndCas(lck, vbsetCtx, kvb);
+
+    /* Put on checkpoint or on tap backfill queue */
+    if (vbsetCtx.isTap) {
+        tapQueueDirty(lck, kvb, *(vbsetCtx.v), *(vbsetCtx.plh),
+                      vbsetCtx.generateBySeqno);
+    } else {
+        chkQueueDirty(lck, kvb, *(vbsetCtx.v), vbsetCtx.generateBySeqno,
+                      vbsetCtx.generateCas);
+    }
+    return rv;
+}
+
+void VBucket::genSeqnoAndCas(std::unique_lock<std::mutex>& seqLck,
+                             VBSetCtx& vbsetCtx,
+                             KVBucket* kvb) {
+    int64_t highSeqno = getHighSeqnoUnlocked(seqLck);
+    Item& itm = vbsetCtx.itm;
+    StoredValue& v = *(vbsetCtx.v);
+    GenerateBySeqno& genBySeqno = vbsetCtx.generateBySeqno;
+    GenerateCas& genCas = vbsetCtx.generateCas;
+
+    if(GenerateBySeqno::Yes == genBySeqno) {
+        ++highSeqno;
+        /* [EPHE TODO]: Once we generate seqno in one single place, that is here
+                        we do not need the enum
+                        GenerateBySeqno::AlreadyGenerated */
+        genBySeqno = GenerateBySeqno::AlreadyGenerated;
+    } else {
+        if (itm.getBySeqno() <= highSeqno) {
+            throw std::logic_error("EphemeralVBucket::addNewStoredValue(): "
+                                   "vb " + std::to_string(getId()) +
+                                   ": item seqno (" +
+                                   std::to_string(itm.getBySeqno()) +
+                                   ") <= highSeqno (" +
+                                   std::to_string(highSeqno));
+        }
+        highSeqno = itm.getBySeqno();
+    }
+    v.setBySeqno(highSeqno);
+    itm.setBySeqno(highSeqno);
+
+    if (TrackCasDrift::Yes == vbsetCtx.trackCasDrift) {
+        setMaxCasAndTrackDrift(v.getCas());
+    }
+
+    // MB-20798: Allow the HLC to be created 'atomically' with the seqno as
+    // we're holding the ::seqLock.
+    if (GenerateCas::Yes == vbsetCtx.generateCas) {
+        itm.setCas(nextHLCCas());
+        v.setCas(itm.getCas());
+        genCas = GenerateCas::AlreadyGenerated;
     }
 }
 

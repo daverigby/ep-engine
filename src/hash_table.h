@@ -27,6 +27,32 @@ class HashTableDepthVisitor;
 class PauseResumeHashTableVisitor;
 
 /**
+ * Indicates the result of store (set, replace, del...) commands on the hash
+ * table.
+ */
+enum mutation_type_t {
+    NOT_FOUND,                  //!< The item was not found for update
+    INVALID_CAS,                //!< The wrong CAS identifier was sent for a CAS update
+    WAS_CLEAN,                  //!< The item was clean before this mutation
+    WAS_DIRTY,                  //!< This item was already dirty before this mutation
+    IS_LOCKED,                  //!< The item is locked and can't be updated.
+    NOMEM,                      //!< Insufficient memory to store this item.
+    NEED_BG_FETCH,              //!< Require a bg fetch to process SET op
+};
+
+/**
+ * Result from add operation.
+ */
+enum add_type_t {
+    ADD_SUCCESS,                //!< Add was successful.
+    ADD_NOMEM,                  //!< No memory for operation
+    ADD_EXISTS,                 //!< Did not update -- item exists with this key
+    ADD_UNDEL,                  //!< Undeletes an existing dirty item
+    ADD_TMP_AND_BG_FETCH,       //!< Create a tmp item and schedule a bg metadata fetch
+    ADD_BG_FETCH                //!< Schedule a bg metadata fetch to process ADD op
+};
+
+/**
  * A container of StoredValue instances.
  *
  * The HashTable class is an unordered, associative array which maps keys
@@ -233,6 +259,8 @@ public:
      */
     Item *getRandomKey(long rnd);
 
+    /* [EPHE TODO] : Refactor HashTable and vb module test so that ht.set is no longer
+     used */
     /**
      * Set a new Item into this hashtable. Use this function when your item
      * doesn't contain meta data.
@@ -268,6 +296,40 @@ public:
                                  item_eviction_policy_t policy = VALUE_ONLY,
                                  bool maybeKeyExists=true,
                                  bool isReplication = false);
+
+
+    /**
+     * Update an existing StoredValue with a new value. Hash bucket lock is
+     * assumed to be acquired already
+     *
+     * @param htLock Hash bucket lock that must be grabbed already
+     * @param v (IN) current StoredValue of the itm.
+     *          (OUT) Same or new StoredValue updated with itm value
+     * @param itm New value of the item
+     * @param hasMetaData should we keep the same revision seqno or increment it
+     *
+     * @return a result indicating the status of the update
+     */
+    mutation_type_t unlocked_updateStoredValue(
+                                        std::unique_lock<std::mutex>& htLock,
+                                        StoredValue& v, Item& itm,
+                                        bool hasMetaData);
+
+    /**
+     * Create a new StoredValue for itm. Hash bucket lock is assumed to be
+     * acquired already
+     *
+     * @param htLock Hash bucket lock that must be grabbed already
+     * @param v (OUT) New StoredValue created from itm
+     * @param itm Value of the item
+     * @param hasMetaData should we keep the same revision seqno or increment it
+     *
+     * @return a result indicating the status of the update
+     */
+    mutation_type_t unlocked_addNewStoredValue(
+                                        std::unique_lock<std::mutex>& htLock,
+                                        StoredValue*& v, Item& itm,
+                                        bool hasMetaData);
 
     /**
      * Insert an item to this hashtable. This is called from the backfill

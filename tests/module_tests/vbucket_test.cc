@@ -112,7 +112,7 @@ TEST_P(VBucketEvictionTest, EjectionResidentCount) {
               /*data*/nullptr, /*ndata*/0};
 
     EXPECT_EQ(WAS_CLEAN,
-              this->vbucket->ht.set(item, eviction_policy));
+              this->vbucket->set(item, eviction_policy));
 
     EXPECT_EQ(1, this->vbucket->getNumItems(eviction_policy));
     EXPECT_EQ(0, this->vbucket->getNumNonResidentItems(eviction_policy));

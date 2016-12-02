@@ -1118,7 +1118,8 @@ void CheckpointManager::updateStatsForNewQueuedItem_UNLOCKED(const LockHolder&,
     checkpointList.back()->incrementMemConsumption(qi->size());
 }
 
-bool CheckpointManager::queueDirty(VBucket& vb, queued_item& qi,
+bool CheckpointManager::queueDirty(std::unique_lock<std::mutex>& seqLck,
+                                   VBucket& vb, queued_item& qi,
                                    const GenerateBySeqno generateBySeqno,
                                    const GenerateCas generateCas) {
     LockHolder lh(queueLock);
@@ -1156,11 +1157,18 @@ bool CheckpointManager::queueDirty(VBucket& vb, queued_item& qi,
                 ") is not OPEN");
     }
 
-    if (GenerateBySeqno::Yes == generateBySeqno) {
+    switch (generateBySeqno) {
+    case GenerateBySeqno::Yes:
         qi->setBySeqno(++lastBySeqno);
         checkpointList.back()->setSnapshotEndSeqno(lastBySeqno);
-    } else {
+        break;
+    case GenerateBySeqno::AlreadyGenerated:
         lastBySeqno = qi->getBySeqno();
+        checkpointList.back()->setSnapshotEndSeqno(lastBySeqno);
+        break;
+    case GenerateBySeqno::No:
+        lastBySeqno = qi->getBySeqno();
+        break;
     }
 
     // MB-20798: Allow the HLC to be created 'atomically' with the seqno as
@@ -1305,7 +1313,8 @@ void CheckpointManager::dump() const {
     std::cerr << *this << std::endl;
 }
 
-void CheckpointManager::clear(RCPtr<VBucket> &vb, uint64_t seqno) {
+void CheckpointManager::clear(std::unique_lock<std::mutex>& seqLh,
+                              RCPtr<VBucket> &vb, uint64_t seqno) {
     LockHolder lh(queueLock);
     clear_UNLOCKED(vb->getState(), seqno);
 
