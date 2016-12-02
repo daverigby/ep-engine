@@ -152,6 +152,7 @@ ADD_LIBRARY(ep SHARED
             src/ep.cc
             src/ep_engine.cc
             src/ep_time.cc
+            src/ephemeral_bucket.cc
             src/executorpool.cc
             src/executorthread.cc
             src/ext_meta_parser.cc
@@ -228,6 +229,7 @@ ADD_EXECUTABLE(ep-engine_ep_unit_tests
   src/ep.cc
   src/ep_engine.cc
   src/ep_time.cc
+  src/ephemeral_bucket.cc
   src/executorpool.cc
   src/executorthread.cc
   src/ext_meta_parser.cc
@@ -559,7 +561,8 @@ INSTALL(TARGETS ep
         ARCHIVE DESTINATION lib)
 
 
-# Defines a testsuite which runs in full and value eviction variants.
+# Defines a testsuite which runs in full and value eviction
+# (persistent), ephemeral buckets (which has no eviction).
 FUNCTION(ADD_TESTSUITE name timeout)
   SET(_cmdline
     ${CMAKE_BINARY_DIR}/memcached/engine_testapp
@@ -569,8 +572,11 @@ FUNCTION(ADD_TESTSUITE name timeout)
          COMMAND ${_cmdline} -v -e "dbname=./${name}.value_eviction.db")
   ADD_TEST(NAME ${name}.full_eviction
          COMMAND ${_cmdline} -v -e "item_eviction_policy=full_eviction$<SEMICOLON>dbname=./${name}.full_eviction.db")
+  ADD_TEST(NAME ${name}.ephemeral
+         COMMAND ${_cmdline} -v -e "bucket_type=ephemeral$<SEMICOLON>dbname=./${name}.ephemeral.db")
   SET_TESTS_PROPERTIES(${name}.value_eviction PROPERTIES TIMEOUT ${timeout})
   SET_TESTS_PROPERTIES(${name}.full_eviction PROPERTIES TIMEOUT ${timeout})
+  SET_TESTS_PROPERTIES(${name}.ephemeral PROPERTIES TIMEOUT ${timeout})
 ENDFUNCTION()
 
 ADD_TESTSUITE(ep_testsuite 1800)
@@ -598,6 +604,9 @@ ADD_CUSTOM_TARGET(test-perfsuite
                   VERBATIM)
 ADD_TEST(NAME ep_perfsuite.value_eviction
          COMMAND ${_ep_perfsuite_cmdline} -e "dbname=./ep_perfsuite.value_eviction.db")
+
+ADD_TEST(NAME ep_perfsuite.ephemeral
+         COMMAND ${_ep_perfsuite_cmdline} -e "bucket_type=ephemeral$<SEMICOLON>dbname=./ep_perfsuite.ephemeral.db")
 
 # ============================================================================ #
 
