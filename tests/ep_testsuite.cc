@@ -2701,24 +2701,20 @@ static enum test_result test_access_scanner_settings(ENGINE_HANDLE *h,
         return SKIPPED;
     }
 
+    // Create a unique access log path by combining with the db path.
     checkeq(ENGINE_SUCCESS,
             h1->get_stats(h, NULL, NULL, 0, add_stats),
             "Failed to get stats.");
-    std::string policy = vals.find("ep_item_eviction_policy")->second;
-    std::string name = vals.find("ep_alog_path")->second;
-    check(!name.empty(), "No access log path specified!");
+    std::string dbname = vals.find("ep_dbname")->second;
 
-    std::string oldparam(".log");
-    std::string newparam(policy + oldparam);
-    std::string config = testHarness.get_current_testcase()->cfg;
-    std::string::size_type found = config.find(oldparam);
-    if (found != config.npos) {
-        config.replace(found, oldparam.size(), newparam);
-    }
+    const auto alog_path = std::string("alog_path=") + dbname +
+            DIRECTORY_SEPARATOR_CHARACTER + "access.log";
+    std::string newconfig = std::string(testHarness.get_current_testcase()->cfg)
+                            + alog_path;
 
     testHarness.reload_engine(&h, &h1,
                               testHarness.engine_path,
-                              config.c_str(),
+                              newconfig.c_str(),
                               true, false);
     wait_for_warmup_complete(h, h1);
 
@@ -2778,20 +2774,14 @@ static enum test_result test_access_scanner(ENGINE_HANDLE *h,
         return SKIPPED;
     }
 
+    // Create a unique access log path by combining with the db path.
     checkeq(ENGINE_SUCCESS,
             h1->get_stats(h, NULL, NULL, 0, add_stats),
             "Failed to get stats.");
-    std::string policy = vals.find("ep_item_eviction_policy")->second;
-    std::string name = vals.find("ep_alog_path")->second;
-    check(!name.empty(), "No access log path specified!");
+    const auto dbname = vals.find("ep_dbname")->second;
 
-    std::string oldparam(".log");
-    std::string newparam(policy + oldparam);
-    std::string config = testHarness.get_current_testcase()->cfg;
-    std::string::size_type found = config.find(oldparam);
-    if (found != config.npos) {
-        config.replace(found, oldparam.size(), newparam);
-    }
+    const auto alog_path = std::string("alog_path=") + dbname +
+            DIRECTORY_SEPARATOR_CHARACTER + "access.log";
 
     /* We do not want the access scanner task to be running while we initiate it
        explicitly below. Hence set the alog_task_time to about 1 ~ 2 hours
@@ -2805,16 +2795,19 @@ static enum test_result test_access_scanner(ENGINE_HANDLE *h,
               std::to_string(two_hours_hence).c_str());
     wait_for_stat_to_be(h, h1, "ep_alog_task_time", two_hours_hence);
 
+    const auto newconfig = std::string(testHarness.get_current_testcase()->cfg)
+                           + alog_path;
+
     testHarness.reload_engine(&h, &h1,
                               testHarness.engine_path,
-                              config.c_str(),
+                              newconfig.c_str(),
                               true, false);
     wait_for_warmup_complete(h, h1);
 
     checkeq(ENGINE_SUCCESS,
             h1->get_stats(h, NULL, NULL, 0, add_stats),
             "Failed to get stats.");
-    name = vals.find("ep_alog_path")->second;
+    std::string name = vals.find("ep_alog_path")->second;
 
     /* Check access scanner is enabled */
     checkeq(true, get_bool_stat(h, h1, "ep_access_scanner_enabled"),
@@ -7068,9 +7061,9 @@ BaseTestCase testsuite_testcases[] = {
         TestCase("test session cas validation", test_session_cas_validation,
                  test_setup, teardown, NULL, prepare, cleanup),
         TestCase("test access scanner settings", test_access_scanner_settings,
-                 test_setup, teardown, "alog_path=./epaccess.log", prepare, cleanup),
+                 test_setup, teardown, NULL, prepare, cleanup),
         TestCase("test access scanner", test_access_scanner, test_setup,
-                 teardown, "alog_path=./epaccess.log;chk_remover_stime=1;"
+                 teardown, "chk_remover_stime=1;"
                  "max_size=6291456", prepare, cleanup),
         TestCase("test set_param message", test_set_param_message, test_setup,
                  teardown, "chk_remover_stime=1;max_size=6291456", prepare, cleanup),
