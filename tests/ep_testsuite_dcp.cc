@@ -2927,7 +2927,8 @@ static uint32_t add_stream_for_consumer(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1,
     }
 
     if (exp_snap_end != 0) {
-        cb_assert(exp_snap_end == dcp_last_snap_end_seqno);
+        checkeq(exp_snap_end, dcp_last_snap_end_seqno,
+                "Snaphot end seqno not as expected");
     }
 
     size_t bodylen = 0;

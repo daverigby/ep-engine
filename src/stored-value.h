@@ -39,7 +39,7 @@ public:
         ::operator delete(p);
      }
 
-    uint8_t getNRUValue();
+    uint8_t getNRUValue() const;
 
     void setNRUValue(uint8_t nru_val);
 
@@ -505,6 +505,9 @@ public:
      */
     void reallocate();
 
+    static bool hasAvailableSpace(EPStats&, const Item &item,
+                                  bool isReplication=false);
+
 private:
 
     StoredValue(const Item &itm, StoredValue *n, EPStats &stats, HashTable &ht,
@@ -560,36 +563,9 @@ private:
     static void reduceMetaDataSize(HashTable &ht, EPStats &st, size_t by);
     static void increaseCacheSize(HashTable &ht, size_t by);
     static void reduceCacheSize(HashTable &ht, size_t by);
-    static bool hasAvailableSpace(EPStats&, const Item &item,
-                                  bool isReplication=false);
     static double mutation_mem_threshold;
 
     DISALLOW_COPY_AND_ASSIGN(StoredValue);
-};
-
-/**
- * Mutation types as returned by store commands.
- */
-enum mutation_type_t {
-    NOT_FOUND,                  //!< The item was not found for update
-    INVALID_CAS,                //!< The wrong CAS identifier was sent for a CAS update
-    WAS_CLEAN,                  //!< The item was clean before this mutation
-    WAS_DIRTY,                  //!< This item was already dirty before this mutation
-    IS_LOCKED,                  //!< The item is locked and can't be updated.
-    NOMEM,                      //!< Insufficient memory to store this item.
-    NEED_BG_FETCH               //!< Require a bg fetch to process SET op
-};
-
-/**
- * Result from add operation.
- */
-enum add_type_t {
-    ADD_SUCCESS,                //!< Add was successful.
-    ADD_NOMEM,                  //!< No memory for operation
-    ADD_EXISTS,                 //!< Did not update -- item exists with this key
-    ADD_UNDEL,                  //!< Undeletes an existing dirty item
-    ADD_TMP_AND_BG_FETCH,       //!< Create a tmp item and schedule a bg metadata fetch
-    ADD_BG_FETCH                //!< Schedule a bg metadata fetch to process ADD op
 };
 
 /**

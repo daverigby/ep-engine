@@ -33,6 +33,7 @@
 #include <queue>
 
 class BgFetcher;
+class KVBucket;
 
 const size_t MIN_CHK_FLUSH_TIMEOUT = 10; // 10 sec.
 const size_t MAX_CHK_FLUSH_TIMEOUT = 30; // 30 sec.
@@ -47,6 +48,49 @@ struct HighPriorityVBEntry {
     uint64_t id;
     hrtime_t start;
     bool isBySeqno_;
+};
+
+/* Ctx that contains params for setting an item in vbucket */
+struct VBSetCtx {
+    VBSetCtx(StoredValue*& sv, Item& val,
+             const uint64_t cas,
+             const bool allowExisting,
+             const bool hasMetaData = true,
+             const item_eviction_policy_t policy = VALUE_ONLY,
+             const bool maybeKeyExists = true,
+             const bool isReplication = false,
+             const GenerateBySeqno generateBySeqno = GenerateBySeqno::Yes,
+             const GenerateCas generateCas = GenerateCas::Yes,
+             const TrackCasDrift trackCasDrift = TrackCasDrift::No,
+             const bool isTap = false,
+             std::unique_lock<std::mutex>* plh = nullptr)
+        : v(sv),
+          itm(val),
+          cas(cas),
+          allowExisting(allowExisting),
+          hasMetaData(hasMetaData),
+          policy(policy),
+          maybeKeyExists(maybeKeyExists),
+          isReplication(isReplication),
+          generateBySeqno(generateBySeqno),
+          generateCas(generateCas),
+          trackCasDrift(trackCasDrift),
+          isTap(isTap),
+          plh(plh) { }
+
+    StoredValue*& v;
+    Item& itm;
+    const uint64_t cas;
+    const bool allowExisting;
+    const bool hasMetaData;
+    const item_eviction_policy_t policy;
+    const bool maybeKeyExists;
+    const bool isReplication;
+    GenerateBySeqno generateBySeqno;
+    GenerateCas generateCas;
+    const TrackCasDrift trackCasDrift;
+    const bool isTap;
+    std::unique_lock<std::mutex>* plh;
 };
 
 /**
@@ -160,6 +204,11 @@ public:
     ~VBucket();
 
     int64_t getHighSeqno() const {
+        std::unique_lock<std::mutex> seqlh(seqLock);
+        return getHighSeqnoUnlocked(seqlh);
+    }
+
+    int64_t getHighSeqnoUnlocked(std::unique_lock<std::mutex>& seqlh) const {
         return checkpointManager.getHighSeqno();
     }
 
@@ -289,13 +338,14 @@ public:
         LockHolder lh(backfill.mutex);
         return backfill.items.size();
     }
-    bool queueBackfillItem(queued_item& qi,
+    bool queueBackfillItem(std::unique_lock<std::mutex>& seqLh,
+                           queued_item& qi,
                            const GenerateBySeqno generateBySeqno) {
         LockHolder lh(backfill.mutex);
         if (GenerateBySeqno::Yes == generateBySeqno) {
-            qi->setBySeqno(checkpointManager.nextBySeqno());
+            qi->setBySeqno(checkpointManager.nextBySeqno(seqLh));
         } else {
-            checkpointManager.setBySeqno(qi->getBySeqno());
+            checkpointManager.setBySeqno(seqLh, qi->getBySeqno());
         }
         backfill.items.push(qi);
         ++stats.diskQueueSize;
@@ -455,6 +505,35 @@ public:
         return shard;
     }
 
+    /**
+     * Set a new Item in the vbucket. Use this function when your item
+     * doesn't contain meta data.
+     */
+    mutation_type_t set(Item &val,
+                        item_eviction_policy_t policy = VALUE_ONLY)
+    {
+        return set(val, val.getCas(), true, false, policy);
+    }
+
+    /**
+     * Set an Item into the vbucket. Use this function to do a set
+     * when your item includes meta data.
+     */
+    mutation_type_t set(Item &val, uint64_t cas, bool allowExisting,
+                        bool hasMetaData = true,
+                        item_eviction_policy_t policy = VALUE_ONLY);
+
+    /**
+     * Set an Item in the vbucket with the hash bucket lock already grabbed.
+     */
+    mutation_type_t htUnlockedSet(std::unique_lock<std::mutex>& htLock,
+                                  VBSetCtx& vbsetCtx,
+                                  KVBucket* kvb);
+
+    std::unique_lock<std::mutex> getSeqLock() {
+        return std::unique_lock<std::mutex> (seqLock);
+    }
+
     std::queue<queued_item> rejectQueue;
     FailoverTable *failovers;
 
@@ -474,6 +553,41 @@ public:
     std::atomic<size_t>  numExpiredItems;
 
 private:
+    /**
+     * Update an existing item in the hash table.
+     */
+    mutation_type_t updateStoredValue(std::unique_lock<std::mutex>& htLock,
+                                      VBSetCtx& vbsetCtx, KVBucket* kvb);
+
+    /**
+     * Add a new item to the hash table.
+     */
+    mutation_type_t addNewStoredValue(std::unique_lock<std::mutex>& htLock,
+                                      VBSetCtx& vbsetCtx, KVBucket* kvb);
+
+    /**
+     * Generates/gets sequence number and cas for/from a new or updated item
+     */
+    void genSeqnoAndCas(std::unique_lock<std::mutex>& seqLck,
+                        VBSetCtx& vbsetCtx,
+                        KVBucket* kvb);
+
+    /**
+     * Puts new/updated item onto checkpoint
+     */
+    void chkQueueDirty(std::unique_lock<std::mutex>& seqLh,
+                       KVBucket* kvb, StoredValue& v,
+                       const GenerateBySeqno generateBySeqno,
+                       const GenerateCas generateCas);
+
+    /**
+     * Puts new/updated item onto tap backfill queue (vb level queue)
+     */
+    void tapQueueDirty(std::unique_lock<std::mutex>& seqLh,
+                       KVBucket* kvb, StoredValue& v,
+                       std::unique_lock<std::mutex>& plh,
+                       const GenerateBySeqno generateBySeqno);
+
     template <typename T>
     void addStat(const char *nm, const T &val, ADD_STAT add_stat, const void *c);
 
@@ -525,7 +639,19 @@ private:
 
     static std::atomic<size_t> chkFlushTimeout;
 
+    /* Lock to synchronize seqno generation.
+       Even though sequence number is here, it is updated in the checkpoint mgr
+       and is read from there.
+       Until all sequence number generation refactoring is done such that, we
+       generate seqno only in one place (that VBucket class), getHighSeqno is
+       read from the checkpoint mgr.
+       Any function that modifies seqno should grab
+       i) seqLock in 'VBucket' and then  ii) queueLock in 'CheckpointManager'.
+       Functions that generate new seqno have been made to pass reference to
+       these locks to ensure correct operation
+    */
+    mutable std::mutex seqLock;
+
     DISALLOW_COPY_AND_ASSIGN(VBucket);
 };
-
 #endif  // SRC_VBUCKET_H_

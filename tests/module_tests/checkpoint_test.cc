@@ -83,7 +83,8 @@ protected:
 
         queued_item qi{new Item(key, vbucket->getId(), queue_op::set,
                                 /*revSeq*/0, /*bySeq*/0)};
-        return manager->queueDirty(*vbucket, qi,
+        std::unique_lock<std::mutex> lh = vbucket->getSeqLock();
+        return manager->queueDirty(lh, *vbucket, qi,
                                    GenerateBySeqno::Yes, GenerateCas::Yes);
     }
 
@@ -193,7 +194,9 @@ static void launch_set_thread(void *arg) {
         key << "key-" << i;
         queued_item qi(new Item(key.str(), args->vbucket->getId(),
                                 queue_op::set, 0, 0));
-        args->checkpoint_manager->queueDirty(*args->vbucket, qi,
+        std::unique_lock<std::mutex> lh = args->vbucket->getSeqLock();
+        args->checkpoint_manager->queueDirty(lh,
+                                             *args->vbucket, qi,
                                              GenerateBySeqno::Yes,
                                              GenerateCas::Yes);
     }
@@ -263,8 +266,12 @@ TEST_F(CheckpointTest, basic_chk_test) {
     // Push the flush command into the queue so that all other threads can be terminated.
     std::string key("flush");
     queued_item qi(new Item(key, vbucket->getId(), queue_op::flush, 0xffff, 0));
-    checkpoint_manager->queueDirty(*vbucket, qi, GenerateBySeqno::Yes,
-                                   GenerateCas::Yes);
+    {
+        std::unique_lock<std::mutex> lh = vbucket->getSeqLock();
+        checkpoint_manager->queueDirty(lh, *vbucket, qi,
+                                       GenerateBySeqno::Yes,
+                                       GenerateCas::Yes);
+    }
 
     rc = cb_join_thread(persistence_thread);
     EXPECT_EQ(0, rc);
@@ -358,8 +365,12 @@ TEST_F(CheckpointTest, OneOpenCkpt) {
 
     // No set_ops in queue, expect queueDirty to return true (increase
     // persistence queue size).
-    EXPECT_TRUE(manager->queueDirty(*vbucket, qi, GenerateBySeqno::Yes,
-                                    GenerateCas::Yes));
+    {
+        std::unique_lock<std::mutex> lh = vbucket->getSeqLock();
+        EXPECT_TRUE(manager->queueDirty(lh, *vbucket, qi,
+                                        GenerateBySeqno::Yes,
+                                        GenerateCas::Yes));
+    }
     EXPECT_EQ(1, manager->getNumCheckpoints());  // Single open checkpoint.
     EXPECT_EQ(2, manager->getNumOpenChkItems()); // 1x op_checkpoint_start, 1x op_set
     EXPECT_EQ(1001, qi->getBySeqno());
@@ -369,8 +380,12 @@ TEST_F(CheckpointTest, OneOpenCkpt) {
     // Adding the same key again shouldn't increase the size.
     queued_item qi2(new Item("key1", vbucket->getId(), queue_op::set,
                             /*revSeq*/21, /*bySeq*/0));
-    EXPECT_FALSE(manager->queueDirty(*vbucket, qi2, GenerateBySeqno::Yes,
-                                     GenerateCas::Yes));
+    {
+        std::unique_lock<std::mutex> lh = vbucket->getSeqLock();
+        EXPECT_FALSE(manager->queueDirty(lh, *vbucket, qi2,
+                                         GenerateBySeqno::Yes,
+                                         GenerateCas::Yes));
+    }
     EXPECT_EQ(1, manager->getNumCheckpoints());
     EXPECT_EQ(2, manager->getNumOpenChkItems());
     EXPECT_EQ(1002, qi2->getBySeqno());
@@ -380,8 +395,12 @@ TEST_F(CheckpointTest, OneOpenCkpt) {
     // Adding a different key should increase size.
     queued_item qi3(new Item("key2", vbucket->getId(), queue_op::set,
                             /*revSeq*/0, /*bySeq*/0));
-    EXPECT_TRUE(manager->queueDirty(*vbucket, qi3, GenerateBySeqno::Yes,
-                                    GenerateCas::Yes));
+    {
+        std::unique_lock<std::mutex> lh = vbucket->getSeqLock();
+        EXPECT_TRUE(manager->queueDirty(lh, *vbucket, qi3,
+                                        GenerateBySeqno::Yes,
+                                        GenerateCas::Yes));
+    }
     EXPECT_EQ(1, manager->getNumCheckpoints());
     EXPECT_EQ(3, manager->getNumOpenChkItems());
     EXPECT_EQ(1003, qi3->getBySeqno());
@@ -913,10 +932,15 @@ TEST_F(CheckpointTest, SeqnoAndHLCOrdering) {
                 queued_item qi(new Item(key + std::to_string(item),
                                         vbucket->getId(), queue_op::set,
                                         /*revSeq*/0, /*bySeq*/0));
-                EXPECT_TRUE(manager->queueDirty(*vbucket,
-                                                qi,
-                                                GenerateBySeqno::Yes,
-                                                GenerateCas::Yes));
+                {
+                    std::unique_lock<std::mutex> lh = vbucket->getSeqLock();
+                    EXPECT_TRUE(manager->queueDirty(lh,
+                                                    *vbucket,
+                                                    qi,
+                                                    GenerateBySeqno::Yes,
+                                                    GenerateCas::Yes));
+
+                }
 
                 // Save seqno/cas
                 threadsData.push_back(std::make_pair(qi->getBySeqno(), qi->getCas()));

@@ -915,11 +915,13 @@ ENGINE_ERROR_CODE EPBucket::set(Item &itm, const void *cookie) {
         }
     }
 
-    mutation_type_t mtype = vb->ht.unlocked_set(v, itm, itm.getCas(), true, false,
-                                                eviction_policy,
-                                                maybeKeyExists);
+    mutation_type_t mtype;
+    {
+        VBSetCtx vbsetCtx(v, itm, itm.getCas(), true, false, eviction_policy,
+                          maybeKeyExists);
+        mtype = vb->htUnlockedSet(lh, vbsetCtx, this);
+    }
 
-    uint64_t seqno = 0;
     ENGINE_ERROR_CODE ret = ENGINE_SUCCESS;
     switch (mtype) {
     case NOMEM:
@@ -933,16 +935,13 @@ ENGINE_ERROR_CODE EPBucket::set(Item &itm, const void *cookie) {
         if (cas_op) {
             ret = ENGINE_KEY_ENOENT;
             break;
+        } else {
+            throw std::logic_error("EPBucket::set: should not get NOT_FOUND "
+                                   "CAS is zero");
         }
-        // FALLTHROUGH
     case WAS_DIRTY:
-        // Even if the item was dirty, push it into the vbucket's open
-        // checkpoint.
+        // FALLTHROUGH
     case WAS_CLEAN:
-        // We keep lh held as we need to do v->getCas()
-        queueDirty(vb, v, nullptr, &seqno);
-        itm.setBySeqno(seqno);
-        itm.setCas(v->getCas());
         break;
     case NEED_BG_FETCH:
     {   // CAS operation with non-resident item + full eviction.
@@ -1071,10 +1070,10 @@ ENGINE_ERROR_CODE EPBucket::replace(Item &itm, const void *cookie) {
         if (eviction_policy == FULL_EVICTION && v->isTempInitialItem()) {
             mtype = NEED_BG_FETCH;
         } else {
-            mtype = vb->ht.unlocked_set(v, itm, 0, true, false, eviction_policy);
+            VBSetCtx vbsetCtx(v, itm, 0, true, false, eviction_policy);
+            mtype = vb->htUnlockedSet(lh, vbsetCtx, this);
         }
 
-        uint64_t seqno = 0;
         ENGINE_ERROR_CODE ret = ENGINE_SUCCESS;
         switch (mtype) {
             case NOMEM:
@@ -1087,15 +1086,8 @@ ENGINE_ERROR_CODE EPBucket::replace(Item &itm, const void *cookie) {
             case NOT_FOUND:
                 ret = ENGINE_NOT_STORED;
                 break;
-                // FALLTHROUGH
             case WAS_DIRTY:
-                // Even if the item was dirty, push it into the vbucket's open
-                // checkpoint.
             case WAS_CLEAN:
-                // Keep lh as we need to do v->getCas()
-                queueDirty(vb, v, nullptr, &seqno);
-                itm.setBySeqno(seqno);
-                itm.setCas(v->getCas());
                 break;
             case NEED_BG_FETCH:
             {
@@ -1156,8 +1148,15 @@ ENGINE_ERROR_CODE EPBucket::addTAPBackfillItem(Item &itm, bool genBySeqno,
     if (v && v->isLocked(ep_current_time())) {
         v->unlock();
     }
-    mutation_type_t mtype = vb->ht.unlocked_set(v, itm, 0, true, true,
-                                                eviction_policy);
+
+    mutation_type_t mtype;
+    {
+        VBSetCtx vbsetCtx(v, itm, 0, true, true, eviction_policy, true, false,
+                          (genBySeqno ?
+                                    GenerateBySeqno::Yes : GenerateBySeqno::No),
+                          GenerateCas::No, TrackCasDrift::No, true, &lh);
+        mtype = vb->htUnlockedSet(lh, vbsetCtx, this);
+    }
 
     ENGINE_ERROR_CODE ret = ENGINE_SUCCESS;
     switch (mtype) {
@@ -1168,16 +1167,15 @@ ENGINE_ERROR_CODE EPBucket::addTAPBackfillItem(Item &itm, bool genBySeqno,
     case IS_LOCKED:
         ret = ENGINE_KEY_EEXISTS;
         break;
+    case NOT_FOUND:
+        throw std::logic_error("EPBucket::addTAPBackfillItem: Did not expect "
+                               "NOT_FOUND");
     case WAS_DIRTY:
         // FALLTHROUGH, to ensure the bySeqno for the hashTable item is
         // set correctly, and also the sequence numbers are ordered correctly.
         // (MB-14003)
-    case NOT_FOUND:
-        // FALLTHROUGH
     case WAS_CLEAN:
         vb->setMaxCas(v->getCas());
-        tapQueueDirty(*vb, v, lh, NULL,
-                      genBySeqno ? GenerateBySeqno::Yes : GenerateBySeqno::No);
         break;
     case NEED_BG_FETCH:
         throw std::logic_error("EventuallyPersistentStore::addTAPBackfillItem: "
@@ -2009,9 +2007,13 @@ ENGINE_ERROR_CODE EPBucket::setWithMeta(Item &itm,
         v->unlock();
     }
 
-    mutation_type_t mtype = vb->ht.unlocked_set(v, itm, cas, allowExisting,
-                                                true, eviction_policy,
-                                                maybeKeyExists, isReplication);
+    mutation_type_t mtype;
+    {
+        VBSetCtx vbsetCtx(v, itm, cas, allowExisting, true, eviction_policy,
+                          maybeKeyExists, isReplication, genBySeqno, genCas,
+                          TrackCasDrift::Yes);
+        mtype = vb->htUnlockedSet(lh, vbsetCtx, this);
+    }
 
     ENGINE_ERROR_CODE ret = ENGINE_SUCCESS;
     switch (mtype) {
@@ -2024,8 +2026,9 @@ ENGINE_ERROR_CODE EPBucket::setWithMeta(Item &itm,
         break;
     case WAS_DIRTY:
     case WAS_CLEAN:
-        vb->setMaxCasAndTrackDrift(v->getCas());
-        queueDirty(vb, v, &lh, seqno, genBySeqno, genCas);
+        if (seqno) {
+            *seqno = static_cast<uint64_t>(v->getBySeqno());
+        }
         break;
     case NOT_FOUND:
         ret = ENGINE_KEY_ENOENT;
@@ -2041,6 +2044,7 @@ ENGINE_ERROR_CODE EPBucket::setWithMeta(Item &itm,
             ret = addTempItemForBgFetch(lh, bucket_num, itm.getKey(), vb,
                                         cookie, true, isReplication);
         }
+        break;
     }
 
     return ret;
@@ -2689,6 +2693,7 @@ ENGINE_ERROR_CODE EPBucket::deleteWithMeta(const std::string &key,
         lh.unlock();
         bgFetch(key, vbucket, cookie, true);
         ret = ENGINE_EWOULDBLOCK;
+        break;
     }
 
     return ret;
@@ -2701,7 +2706,10 @@ void EPBucket::reset() {
         if (vb) {
             LockHolder lh(vb_mutexes[vb->getId()]);
             vb->ht.clear();
-            vb->checkpointManager.clear(vb->getState());
+            {
+                std::unique_lock<std::mutex> seqLh(vb->getSeqLock());
+                vb->checkpointManager.clear(seqLh, vb->getState());
+            }
             vb->resetStats();
             vb->setPersistedSnapshot(0, 0);
         }
@@ -3218,17 +3226,21 @@ PersistenceCallback* EPBucket::flushOneDelOrSet(const queued_item &qi,
     }
 }
 
-void EPBucket::queueDirty(RCPtr<VBucket> &vb,
+void EPBucket::queueDirty(RCPtr<VBucket>& vb,
                           StoredValue* v,
                           std::unique_lock<std::mutex>* plh,
-                          uint64_t *seqno,
+                          uint64_t* seqno,
                           const GenerateBySeqno generateBySeqno,
                           const GenerateCas generateCas) {
     if (vb) {
         queued_item qi(v->toItem(false, vb->getId()));
 
-        bool rv = vb->checkpointManager.queueDirty(*vb, qi,
-                                                   generateBySeqno, generateCas);
+        bool rv;
+        {
+            std::unique_lock<std::mutex> lh = vb->getSeqLock();
+            rv = vb->checkpointManager.queueDirty(lh, *vb, qi, generateBySeqno,
+                                                  generateCas);
+        }
         v->setBySeqno(qi->getBySeqno());
 
         if (seqno) {
@@ -3255,14 +3267,30 @@ void EPBucket::queueDirty(RCPtr<VBucket> &vb,
     }
 }
 
-void EPBucket::tapQueueDirty(VBucket &vb,
+
+void EPBucket::notifyFlusherOnNewSeqno(uint16_t vbid) {
+    KVShard* shard = vbMap.getShardByVbId(vbid);
+    shard->getFlusher()->notifyFlushEvent();
+}
+
+void EPBucket::notifyReplicationOnNewSeqno(uint16_t vbid, int64_t seqno)
+{
+    engine.getTapConnMap().notifyVBConnections(vbid);
+    engine.getDcpConnMap().notifyVBConnections(vbid, seqno);
+}
+
+void EPBucket::tapQueueDirty(VBucket& vb,
                              StoredValue* v,
                              std::unique_lock<std::mutex>& plh,
-                             uint64_t *seqno,
+                             uint64_t* seqno,
                              const GenerateBySeqno generateBySeqno) {
     queued_item qi(v->toItem(false, vb.getId()));
 
-    bool queued = vb.queueBackfillItem(qi, generateBySeqno);
+    bool queued;
+    {
+        std::unique_lock<std::mutex> lh = vb.getSeqLock();
+        queued = vb.queueBackfillItem(lh, qi, generateBySeqno);
+    }
 
     v->setBySeqno(qi->getBySeqno());
 
@@ -3940,7 +3968,7 @@ ENGINE_ERROR_CODE EPBucket::rollback(uint16_t vbid, uint64_t rollbackSeqno) {
     ReaderLockHolder rlh(vb->getStateLock());
     if (vb->getState() == vbucket_state_replica) {
         uint64_t prevHighSeqno = static_cast<uint64_t>
-                                        (vb->checkpointManager.getHighSeqno());
+                                        (vb->getHighSeqno());
         if (rollbackSeqno != 0) {
             std::shared_ptr<Rollback> cb(new Rollback(engine));
             KVStore* rwUnderlying = vbMap.getShardByVbId(vbid)->getRWUnderlying();
@@ -3949,7 +3977,10 @@ ENGINE_ERROR_CODE EPBucket::rollback(uint16_t vbid, uint64_t rollbackSeqno) {
             if (result.success) {
                 rollbackCheckpoint(vb, rollbackSeqno);
                 vb->failovers->pruneEntries(result.highSeqno);
-                vb->checkpointManager.clear(vb, result.highSeqno);
+                {
+                    std::unique_lock<std::mutex> seqLh(vb->getSeqLock());
+                    vb->checkpointManager.clear(seqLh, vb, result.highSeqno);
+                }
                 vb->setPersistedSnapshot(result.snapStartSeqno, result.snapEndSeqno);
                 vb->incrRollbackItemCount(prevHighSeqno - result.highSeqno);
                 return ENGINE_SUCCESS;

@@ -116,7 +116,7 @@ public:
                                                                    vb->getId());
             store.getEPEngine().getDcpConnMap().notifyVBConnections(
                                         vb->getId(),
-                                        vb->checkpointManager.getHighSeqno());
+                                        vb->getHighSeqno());
         }
 
         // fast path for expiry item pager

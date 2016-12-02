@@ -52,7 +52,7 @@ public:
                                                                   vb->getId());
             store->getEPEngine().getDcpConnMap().notifyVBConnections(
                                         vb->getId(),
-                                        vb->checkpointManager.getHighSeqno());
+                                        vb->getHighSeqno());
         }
 
         stats.itemsRemovedFromCheckpoints.fetch_add(removed);
