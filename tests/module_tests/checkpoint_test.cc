@@ -23,6 +23,7 @@
 #include <vector>
 
 #include "checkpoint.h"
+#include "ephemeral_vb.h"
 #include "stats.h"
 #include "vbucket.h"
 
@@ -223,7 +224,7 @@ static void launch_set_thread(void *arg) {
 }
 
 
-typedef ::testing::Types<VBucket> VBucketTypes;
+typedef ::testing::Types<VBucket, EphemeralVBucket> VBucketTypes;
 TYPED_TEST_CASE(CheckpointTest, VBucketTypes);
 
 TYPED_TEST(CheckpointTest, basic_chk_test) {

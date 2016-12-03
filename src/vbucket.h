@@ -201,7 +201,7 @@ public:
             uint64_t purgeSeqno = 0,
             uint64_t maxCas = 0);
 
-    ~VBucket();
+    virtual ~VBucket();
 
     int64_t getHighSeqno() const {
         std::unique_lock<std::mutex> seqlh(seqLock);
@@ -552,19 +552,7 @@ public:
 
     std::atomic<size_t>  numExpiredItems;
 
-private:
-    /**
-     * Update an existing item in the hash table.
-     */
-    mutation_type_t updateStoredValue(std::unique_lock<std::mutex>& htLock,
-                                      VBSetCtx& vbsetCtx, KVBucket* kvb);
-
-    /**
-     * Add a new item to the hash table.
-     */
-    mutation_type_t addNewStoredValue(std::unique_lock<std::mutex>& htLock,
-                                      VBSetCtx& vbsetCtx, KVBucket* kvb);
-
+protected:
     /**
      * Generates/gets sequence number and cas for/from a new or updated item
      */
@@ -587,6 +575,34 @@ private:
                        KVBucket* kvb, StoredValue& v,
                        std::unique_lock<std::mutex>& plh,
                        const GenerateBySeqno generateBySeqno);
+
+    /* Lock to synchronize seqno generation.
+     Even though sequence number is here, it is updated in the checkpoint mgr
+     and is read from there.
+     Until all sequence number generation refactoring is done such that, we
+     generate seqno only in one place (that VBucket class), getHighSeqno is
+     read from the checkpoint mgr.
+     Any function that modifies seqno should grab
+     i) seqLock in 'VBucket' and then  ii) queueLock in 'CheckpointManager'.
+     Functions that generate new seqno have been made to pass reference to
+     these locks to ensure correct operation
+     */
+    mutable std::mutex seqLock;
+
+private:
+    /**
+     * Update an existing item in the hash table.
+     */
+    virtual mutation_type_t updateStoredValue(
+                                        std::unique_lock<std::mutex>& htLock,
+                                        VBSetCtx& vbsetCtx, KVBucket* kvb);
+
+    /**
+     * Add a new item to the hash table.
+     */
+    virtual mutation_type_t addNewStoredValue(
+                                        std::unique_lock<std::mutex>& htLock,
+                                        VBSetCtx& vbsetCtx, KVBucket* kvb);
 
     template <typename T>
     void addStat(const char *nm, const T &val, ADD_STAT add_stat, const void *c);
@@ -638,19 +654,6 @@ private:
     std::atomic<uint64_t> persistenceCheckpointId;
 
     static std::atomic<size_t> chkFlushTimeout;
-
-    /* Lock to synchronize seqno generation.
-       Even though sequence number is here, it is updated in the checkpoint mgr
-       and is read from there.
-       Until all sequence number generation refactoring is done such that, we
-       generate seqno only in one place (that VBucket class), getHighSeqno is
-       read from the checkpoint mgr.
-       Any function that modifies seqno should grab
-       i) seqLock in 'VBucket' and then  ii) queueLock in 'CheckpointManager'.
-       Functions that generate new seqno have been made to pass reference to
-       these locks to ensure correct operation
-    */
-    mutable std::mutex seqLock;
 
     DISALLOW_COPY_AND_ASSIGN(VBucket);
 };
