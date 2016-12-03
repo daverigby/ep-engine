@@ -115,7 +115,7 @@
             }
         },
         "bucket_type": {
-            "default": "persistent",
+            "default": "ephemeral",
             "descr": "Bucket type in the couchbase server",
             "dynamic": false,
             "type": "std::string",

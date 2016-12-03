@@ -838,6 +838,7 @@ public:
     void notifyReplicationOnNewSeqno(uint16_t vbid, int64_t seqno);
 
 protected:
+    
     // During the warmup phase we might want to enable external traffic
     // at a given point in time.. The LoadStorageKvPairCallback will be
     // triggered whenever we want to check if we could enable traffic..
@@ -977,9 +978,11 @@ protected:
 
     bool resetVBucket_UNLOCKED(uint16_t vbid, LockHolder& vbset);
 
-    ENGINE_ERROR_CODE setVBucketState_UNLOCKED(uint16_t vbid, vbucket_state_t state,
-                                               bool transfer, bool notify_dcp,
-                                               LockHolder& vbset);
+    virtual ENGINE_ERROR_CODE setVBucketState_UNLOCKED(uint16_t vbid,
+                                                       vbucket_state_t state,
+                                                       bool transfer,
+                                                       bool notify_dcp,
+                                                       LockHolder& vbset);
 
     friend class Warmup;
     friend class PersistenceCallback;
