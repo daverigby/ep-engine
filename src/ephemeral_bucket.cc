@@ -18,7 +18,38 @@
 #include "ephemeral_bucket.h"
 
 #include "ep_engine.h"
+#include "ephemeral_vb.h"
 
 EphemeralBucket::EphemeralBucket(EventuallyPersistentEngine& theEngine)
     : KVBucket(theEngine) {
+}
+
+RCPtr<VBucket> EphemeralBucket::createVBucket(
+        VBucket::id_type id,
+        vbucket_state_t state,
+        KVShard* shard,
+        int64_t lastSeqno,
+        uint64_t lastSnapStart,
+        uint64_t lastSnapEnd,
+        std::unique_ptr<FailoverTable> table,
+        std::shared_ptr<Callback<VBucket::id_type>> cb,
+        vbucket_state_t initState,
+        uint64_t chkId,
+        uint64_t purgeSeqno,
+        uint64_t maxCas) {
+    return RCPtr<VBucket>(new EphemeralVBucket(id,
+                                               state,
+                                               stats,
+                                               engine.getCheckpointConfig(),
+                                               shard,
+                                               lastSeqno,
+                                               lastSnapStart,
+                                               lastSnapEnd,
+                                               std::move(table),
+                                               cb,
+                                               engine.getConfiguration(),
+                                               initState,
+                                               chkId,
+                                               purgeSeqno,
+                                               maxCas));
 }

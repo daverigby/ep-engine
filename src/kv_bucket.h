@@ -976,7 +976,7 @@ protected:
 
     /* Create a VBucket object appropriate for this Bucket class.
      */
-    RCPtr<VBucket> createVBucket(VBucket::id_type id,
+    virtual RCPtr<VBucket> createVBucket(VBucket::id_type id,
                                  vbucket_state_t state, KVShard* shard,
                                  int64_t lastSeqno,
                                  uint64_t lastSnapStart, uint64_t lastSnapEnd,
@@ -985,7 +985,7 @@ protected:
                                  vbucket_state_t initState = vbucket_state_dead,
                                  uint64_t chkId = 1,
                                  uint64_t purgeSeqno = 0,
-                                 uint64_t maxCas = 0);
+                                 uint64_t maxCas = 0) = 0;
 
     ENGINE_ERROR_CODE setVBucketState_UNLOCKED(uint16_t vbid, vbucket_state_t state,
                                                bool transfer, bool notify_dcp,
