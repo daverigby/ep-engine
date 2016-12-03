@@ -24,6 +24,7 @@
 #include "utility.h"
 
 #include <platform/cb_malloc.h>
+#include <boost/intrusive/list.hpp>
 
 // Forward declaration for StoredValue
 class HashTable;
@@ -86,6 +87,20 @@ public:
      */
     bool isClean() const {
         return !isDirty();
+    }
+
+    /**
+     * True if a newer instance of the item is added
+     */
+    bool isStale() const {
+        return stale;
+    }
+
+    /**
+     * Marks that newer instance of this item is added
+     */
+    void markStale() {
+        stale = true;
     }
 
     bool eligibleForEviction(item_eviction_policy_t policy) {
@@ -508,6 +523,11 @@ public:
     static bool hasAvailableSpace(EPStats&, const Item &item,
                                   bool isReplication=false);
 
+    /* Hook necessary to maintain sequential order (list) of StoredValues */
+    /* [EPHE TODO] : Use this hook only for 'Ephemeral Buckets'.
+                     Maybe add it along with char keybytes[1]; */
+    boost::intrusive::list_member_hook<> hook_;
+
 private:
 
     StoredValue(const Item &itm, StoredValue *n, EPStats &stats, HashTable &ht,
@@ -521,6 +541,7 @@ private:
         exptime(itm.getExptime()),
         flags(itm.getFlags()),
         deleted(false),
+        stale(false),
         newCacheItem(true),
         nru(itm.getNRUValue()),
         keylen(itm.getNKey()) {
@@ -554,6 +575,8 @@ private:
     uint32_t           flags;          // 4 bytes
     bool               _isDirty  :  1; // 1 bit
     bool               deleted   :  1;
+    bool               stale     :  1; //! 1 bit which indicates if a newer
+                                       //! instance of the item is added
     bool               newCacheItem : 1;
     uint8_t            nru       :  2; //!< True if referenced since last sweep
     uint8_t            keylen;

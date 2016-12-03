@@ -20,6 +20,7 @@ INCLUDE_DIRECTORIES(BEFORE ${CMAKE_INSTALL_PREFIX}/include
                            ${CMAKE_CURRENT_SOURCE_DIR}/src
                            ${CMAKE_CURRENT_BINARY_DIR}/src
                            ${SNAPPY_INCLUDE_DIR}
+                           ${BOOST_INCLUDE_DIR}
                            ${Platform_SOURCE_DIR}/include
                            ${Platform_SOURCE_DIR}/external
                            ${Memcached_SOURCE_DIR}
@@ -153,6 +154,7 @@ ADD_LIBRARY(ep SHARED
             src/ep_engine.cc
             src/ep_time.cc
             src/ephemeral_bucket.cc
+            src/ephemeral_vb.cc
             src/executorpool.cc
             src/executorthread.cc
             src/ext_meta_parser.cc
@@ -169,6 +171,7 @@ ADD_LIBRARY(ep SHARED
             src/murmurhash3.cc
             src/mutation_log.cc
             src/replicationthrottle.cc
+            src/seqlist.cc
             src/sizes.cc
             ${CMAKE_CURRENT_BINARY_DIR}/src/stats-info.c
             src/string_utils.cc
@@ -196,6 +199,7 @@ ADD_EXECUTABLE(ep-engine_ep_unit_tests
   tests/mock/mock_dcp.cc
   tests/module_tests/checkpoint_test.cc
   tests/module_tests/defragmenter_test.cc
+  tests/module_tests/ephemeral_vb_test.cc
   tests/module_tests/ep_unit_tests_main.cc
   tests/module_tests/dcp_test.cc
   tests/module_tests/evp_engine_test.cc
@@ -230,6 +234,7 @@ ADD_EXECUTABLE(ep-engine_ep_unit_tests
   src/ep_engine.cc
   src/ep_time.cc
   src/ephemeral_bucket.cc
+  src/ephemeral_vb.cc
   src/executorpool.cc
   src/executorthread.cc
   src/ext_meta_parser.cc
@@ -249,6 +254,7 @@ ADD_EXECUTABLE(ep-engine_ep_unit_tests
   src/tapconnection.cc
   src/tapconnmap.cc
   src/replicationthrottle.cc
+  src/seqlist.cc
   src/stored-value.cc
   src/string_utils.cc
   src/tasks.cc
@@ -381,6 +387,7 @@ ADD_EXECUTABLE(ep-engine_vbucket_test
   src/hash_table.cc
   src/item.cc
   src/murmurhash3.cc
+  src/seqlist.cc
   src/stored-value.cc
   src/testlogger.cc
   src/vbucket.cc
