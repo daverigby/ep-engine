@@ -24,7 +24,7 @@
 #include "vbucketmap.h"
 
 VBucketMap::VBucketMap(Configuration& config,
-                       KVBucket& store) :
+                       KVBucketIface& store) :
     bucketDeletion(new std::atomic<bool>[config.getMaxVbuckets()]),
     bucketCreation(new std::atomic<bool>[config.getMaxVbuckets()]),
     persistenceSeqnos(new std::atomic<uint64_t>[config.getMaxVbuckets()]),
