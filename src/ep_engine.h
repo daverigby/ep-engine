@@ -22,7 +22,6 @@
 
 #include "ep.h"
 #include "kvbucket.h"
-#include "ephemeral.h"
 #include "tapconnection.h"
 #include "taskable.h"
 #include "vbucket.h"

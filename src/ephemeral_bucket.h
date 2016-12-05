@@ -24,6 +24,8 @@
  */
 
 #include "ep.h"
+#include "locks.h"
+#include "vbucket.h"
 
 /* Note: this is currently a subclass of EPBucket, although it logically
  *       should be a peer. This is to facilitate incremental development -
@@ -35,4 +37,10 @@
 class EphemeralBucket : public EPBucket {
 public:
     EphemeralBucket(EventuallyPersistentEngine& theEngine);
+
+    ENGINE_ERROR_CODE setVBucketState_UNLOCKED(uint16_t vbid,
+                                               vbucket_state_t to,
+                                               bool transfer,
+                                               bool notify_dcp,
+                                               LockHolder& vbset) override;
 };
