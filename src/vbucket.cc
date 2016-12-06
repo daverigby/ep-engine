@@ -126,7 +126,7 @@ VBucket::VBucket(id_type i,
                  int64_t lastSeqno,
                  uint64_t lastSnapStart,
                  uint64_t lastSnapEnd,
-                 FailoverTable *table,
+                 std::unique_ptr<FailoverTable> table,
                  std::shared_ptr<Callback<id_type> > cb,
                  Configuration& config,
                  vbucket_state_t initState,
@@ -136,7 +136,7 @@ VBucket::VBucket(id_type i,
     : ht(st),
       checkpointManager(st, i, chkConfig, lastSeqno, lastSnapStart,
                         lastSnapEnd, cb, chkId),
-      failovers(table),
+      failovers(std::move(table)),
       opsCreate(0),
       opsUpdate(0),
       opsDelete(0),
@@ -207,7 +207,6 @@ VBucket::~VBucket() {
     }
     stats.numRemainingBgJobs.fetch_sub(num_pending_fetches);
     pendingBGFetches.clear();
-    delete failovers;
 
     // Clear out the bloomfilter(s)
     clearFilter();
