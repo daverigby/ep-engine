@@ -251,9 +251,9 @@ ENGINE_ERROR_CODE DcpConsumer::streamEnd(uint32_t opaque, uint16_t vbucket,
             logHeader(), vbucket, flags);
 
         try {
-            err = stream->messageReceived(make_unique<StreamEndResponse>(opaque,
-                                                                         flags,
-                                                                         vbucket));
+            err = stream->messageReceived(std::make_unique<StreamEndResponse>(opaque,
+                                                                              flags,
+                                                                              vbucket));
         } catch (const std::bad_alloc&) {
             return ENGINE_ENOMEM;
         }
@@ -319,9 +319,9 @@ ENGINE_ERROR_CODE DcpConsumer::mutation(uint32_t opaque, const void* key,
         }
 
         try {
-            err = stream->messageReceived(make_unique<MutationResponse>(item,
-                                                                        opaque,
-                                                                        emd));
+            err = stream->messageReceived(std::make_unique<MutationResponse>(item,
+                                                                             opaque,
+                                                                             emd));
         } catch (const std::bad_alloc&) {
             delete emd;
             return ENGINE_ENOMEM;
@@ -383,9 +383,9 @@ ENGINE_ERROR_CODE DcpConsumer::deletion(uint32_t opaque, const void* key,
         }
 
         try {
-            err = stream->messageReceived(make_unique<MutationResponse>(item,
-                                                                        opaque,
-                                                                        emd));
+            err = stream->messageReceived(std::make_unique<MutationResponse>(item,
+                                                                             opaque,
+                                                                             emd));
         } catch (const std::bad_alloc&) {
             delete emd;
             return ENGINE_ENOMEM;
@@ -439,7 +439,7 @@ ENGINE_ERROR_CODE DcpConsumer::snapshotMarker(uint32_t opaque,
     auto stream = findStream(vbucket);
     if (stream && stream->getOpaque() == opaque && stream->isActive()) {
         try {
-            err = stream->messageReceived(make_unique<SnapshotMarker>(opaque,
+            err = stream->messageReceived(std::make_unique<SnapshotMarker>(opaque,
                                                                       vbucket,
                                                                       start_seqno,
                                                                       end_seqno,
@@ -492,7 +492,7 @@ ENGINE_ERROR_CODE DcpConsumer::setVBucketState(uint32_t opaque,
     auto stream = findStream(vbucket);
     if (stream && stream->getOpaque() == opaque && stream->isActive()) {
         try {
-            err = stream->messageReceived(make_unique<SetVBucketState>(opaque,
+            err = stream->messageReceived(std::make_unique<SetVBucketState>(opaque,
                                                                        vbucket,
                                                                        state));
         } catch (const std::bad_alloc&) {
