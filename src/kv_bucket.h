@@ -12,8 +12,7 @@
  *   limitations under the License.
  */
 
-#ifndef SRC_EP_H_
-#define SRC_EP_H_ 1
+#pragma once
 
 #include "config.h"
 
@@ -32,7 +31,7 @@
 class VBCBAdaptor : public GlobalTask {
 public:
 
-    VBCBAdaptor(EPBucket* s, TaskId id,
+    VBCBAdaptor(KVBucket* s, TaskId id,
                 std::shared_ptr<VBucketVisitor> v, const char *l,
                 double sleep=0);
 
@@ -46,7 +45,7 @@ public:
 
 private:
     std::queue<uint16_t>        vbList;
-    EPBucket  *store;
+    KVBucket  *store;
     std::shared_ptr<VBucketVisitor>  visitor;
     const char                 *label;
     double                      sleepTime;
@@ -62,7 +61,7 @@ private:
 class VBucketVisitorTask : public GlobalTask {
 public:
 
-    VBucketVisitorTask(EPBucket* s,
+    VBucketVisitorTask(KVBucket* s,
                        std::shared_ptr<VBucketVisitor> v, uint16_t sh,
                        const char *l, double sleep=0, bool shutdown=true);
 
@@ -76,7 +75,7 @@ public:
 
 private:
     std::queue<uint16_t>         vbList;
-    EPBucket* store;
+    KVBucket* store;
     std::shared_ptr<VBucketVisitor>   visitor;
     const char                  *label;
     double                       sleepTime;
@@ -91,13 +90,16 @@ typedef std::pair<uint16_t, ExTask> CompTaskEntry;
 
 
 /**
- * Manager of all interaction with the persistence.
+ * KVBucket is the base class for concrete Key/Value bucket implementations
+ * which use the concept of VBuckets to support replication, persistence and
+ * failover.
+ *
  */
-class EPBucket : public KVBucketIface {
+class KVBucket : public KVBucketIface {
 public:
 
-    EPBucket(EventuallyPersistentEngine &theEngine);
-    virtual ~EPBucket();
+    KVBucket(EventuallyPersistentEngine &theEngine);
+    virtual ~KVBucket();
 
     /**
      * Start necessary tasks.
@@ -1027,7 +1029,5 @@ protected:
     std::mutex compactionLock;
     std::list<CompTaskEntry> compactionTasks;
 
-    DISALLOW_COPY_AND_ASSIGN(EPBucket);
+    DISALLOW_COPY_AND_ASSIGN(KVBucket);
 };
-
-#endif  // SRC_EP_H_
