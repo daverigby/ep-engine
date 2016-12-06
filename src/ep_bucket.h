@@ -31,4 +31,8 @@
 class EPBucket : public KVBucket {
 public:
     EPBucket(EventuallyPersistentEngine& theEngine);
+
+    bool initialize() override;
+
+    void deinitialize() override;
 };

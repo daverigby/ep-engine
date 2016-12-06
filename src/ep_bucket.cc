@@ -27,3 +27,19 @@ EPBucket::EPBucket(EventuallyPersistentEngine& theEngine)
     : KVBucket(theEngine) {
 }
 
+bool EPBucket::initialize() {
+    KVBucket::initialize();
+
+    if (!startFlusher()) {
+        LOG(EXTENSION_LOG_WARNING,
+            "FATAL: Failed to create and start flushers");
+        return false;
+    }
+    return true;
+}
+
+void EPBucket::deinitialize() {
+    stopFlusher();
+
+    KVBucket::deinitialize();
+}
