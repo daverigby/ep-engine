@@ -2707,7 +2707,6 @@ void EPBucket::reset() {
         }
     }
 
-    ++stats.diskQueueSize;
     bool inverse = true;
     flushAllTaskCtx.delayFlushAll.compare_exchange_strong(inverse, false);
     // Waking up (notifying) one flusher is good enough for diskFlushAll

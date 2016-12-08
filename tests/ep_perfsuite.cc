@@ -143,7 +143,6 @@ std::unordered_map<std::string, StatProperties> stat_tests =
      {"vkey_vb0", {"vkey __sentinel__ 0", StatRuntime::Fast, {}} },
      {"kvtimings", {"kvtimings", StatRuntime::Slow, {}} },
      {"kvstore", {"kvstore", StatRuntime::Fast, {}} },
-     {"warmup", {"warmup", StatRuntime::Fast, {}} },
      {"info", {"info", StatRuntime::Fast, {}} },
      {"allocator", {"allocator", StatRuntime::Slow, {}} },
      {"config", {"config", StatRuntime::Fast, {}} },
@@ -1222,6 +1221,12 @@ static void perf_stat_latency_core(ENGINE_HANDLE *h,
                          &backfill_age, sizeof(backfill_age));
 
     testHarness.unlock_cookie(cookie);
+
+    auto tests = stat_tests;
+    if (isWarmupEnabled(h, h1)) {
+        // Include warmup-specific stats
+        tests.insert({"warmup", {"warmup", StatRuntime::Fast, {}} });
+    }
 
     for (auto& stat : stat_tests) {
         if (stat.second.runtime == statRuntime) {
