@@ -1003,7 +1003,7 @@ protected:
 
     EventuallyPersistentEngine     &engine;
     EPStats                        &stats;
-    Warmup                         *warmupTask;
+    std::unique_ptr<Warmup> warmupTask;
     std::unique_ptr<ConflictResolution> conflictResolver;
     VBucketMap                      vbMap;
     ExTask                          itmpTask;

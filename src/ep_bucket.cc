@@ -18,7 +18,12 @@
 #include "ep_bucket.h"
 
 #include "ep_engine.h"
+#include "warmup.h"
+
+#include <platform/make_unique.h>
+
 
 EPBucket::EPBucket(EventuallyPersistentEngine& theEngine)
     : KVBucket(theEngine) {
 }
+

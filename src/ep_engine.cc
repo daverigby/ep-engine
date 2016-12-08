@@ -2163,6 +2163,8 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
     if (bucketType == "persistent") {
         kvBucket = new EPBucket(*this);
     } else if (bucketType == "ephemeral") {
+        // Disable warmup - it is not applicable to Ephemeral buckets.
+        configuration.setWarmup(false);
         kvBucket = new EphemeralBucket(*this);
     } else {
         throw std::invalid_argument(bucketType + " is not a recognized bucket "
@@ -4674,8 +4676,11 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::getStats(const void* cookie,
         getKVBucket()->addKVStoreStats(add_stat, cookie);
         rv = ENGINE_SUCCESS;
     } else if (statKey == "warmup") {
-        getKVBucket()->getWarmup()->addStats(add_stat, cookie);
-        rv = ENGINE_SUCCESS;
+        auto* warmup = getKVBucket()->getWarmup();
+        if (warmup != nullptr) {
+            warmup->addStats(add_stat, cookie);
+            rv = ENGINE_SUCCESS;
+        }
     } else if (statKey == "info") {
         add_casted_stat("info", get_stats_info(), add_stat, cookie);
         rv = ENGINE_SUCCESS;
