@@ -41,6 +41,7 @@
 
 #include "backfill.h"
 #include "dcp/flow-control-manager.h"
+#include "ep_bucket.h"
 #include "ep_engine.h"
 #include "ephemeral_bucket.h"
 #include "failover-table.h"
@@ -2160,7 +2161,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
 
     const std::string bucketType = configuration.getBucketType();
     if (bucketType == "persistent") {
-        kvBucket = new KVBucket(*this);
+        kvBucket = new EPBucket(*this);
     } else if (bucketType == "ephemeral") {
         kvBucket = new EphemeralBucket(*this);
     } else {

@@ -85,7 +85,7 @@ void SynchronousEPEngine::initializeConnmaps() {
 }
 
 MockEPStore::MockEPStore(EventuallyPersistentEngine &theEngine)
-    : KVBucket(theEngine) {
+    : EPBucket(theEngine) {
     // Perform a limited set of setup (normally done by EPStore::initialize) -
     // enough such that objects which are assumed to exist are present.
 
