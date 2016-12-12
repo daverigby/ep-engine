@@ -956,15 +956,7 @@ size_t CheckpointManager::removeClosedUnrefCheckpoints(
         size_t curr_remains = getNumItemsForCursor_UNLOCKED(pCursorName);
         collapseClosedCheckpoints(unrefCheckpointList);
         size_t new_remains = getNumItemsForCursor_UNLOCKED(pCursorName);
-        if (curr_remains > new_remains) {
-            size_t diff = curr_remains - new_remains;
-            stats.decrDiskQueueSize(diff);
-            vbucket->decrDirtyQueueSize(diff);
-        } else if (curr_remains < new_remains) {
-            size_t diff = new_remains - curr_remains;
-            stats.diskQueueSize.fetch_add(diff);
-            vbucket->dirtyQueueSize.fetch_add(diff);
-        }
+        updateDiskQueueStats(vbucket, curr_remains, new_remains);
     }
     lh.unlock();
 
@@ -1555,6 +1547,20 @@ snapshot_info_t CheckpointManager::getSnapshotInfo() {
     return info;
 }
 
+void CheckpointManager::updateDiskQueueStats(VBucket& vbucket,
+                                             size_t curr_remains,
+                                             size_t new_remains) {
+    if (curr_remains > new_remains) {
+        size_t diff = curr_remains - new_remains;
+        stats.decrDiskQueueSize(diff);
+        vbucket.decrDirtyQueueSize(diff);
+    } else if (curr_remains < new_remains) {
+        size_t diff = new_remains - curr_remains;
+        stats.diskQueueSize.fetch_add(diff);
+        vbucket.dirtyQueueSize.fetch_add(diff);
+    }
+}
+
 void CheckpointManager::checkAndAddNewCheckpoint(uint64_t id,
                                                const RCPtr<VBucket> &vbucket) {
     LockHolder lh(queueLock);
@@ -1615,15 +1621,7 @@ void CheckpointManager::checkAndAddNewCheckpoint(uint64_t id,
         size_t curr_remains = getNumItemsForCursor_UNLOCKED(pCursorName);
         collapseCheckpoints(id);
         size_t new_remains = getNumItemsForCursor_UNLOCKED(pCursorName);
-        if (curr_remains > new_remains) {
-            size_t diff = curr_remains - new_remains;
-            stats.decrDiskQueueSize(diff);
-            vbucket->decrDirtyQueueSize(diff);
-        } else if (curr_remains < new_remains) {
-            size_t diff = new_remains - curr_remains;
-            stats.diskQueueSize.fetch_add(diff);
-            vbucket->dirtyQueueSize.fetch_add(diff);
-        }
+        updateDiskQueueStats(vbucket, curr_remains, new_remains);
     }
 }
 
