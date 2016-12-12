@@ -96,34 +96,51 @@ protected:
     std::unique_ptr<CheckpointManager> manager;
 };
 
+/** Object which is used to synchronise the execution of a number of threads.
+ *  Each thread calls thread_up(), and until all thread have called this
+ *  they are all blocked.
+ */
+class ThreadGate {
+public:
+    /** Create a ThreadGate.
+     *  @param n_threads Total number of threads to wait for.
+     */
+    ThreadGate(size_t n_threads_)
+        : n_threads(n_threads_),
+          thread_count{0} {}
+
+    /*
+     * atomically increment a threadCount
+     * if the calling thread is the last one up, notify_all
+     * if the calling thread is not the last one up, wait (in the function)
+     */
+    void threadUp() {
+        std::unique_lock<std::mutex> lh(m);
+        if (++thread_count != n_threads) {
+            cv.wait(lh, [this](){return thread_count == n_threads;});
+        } else {
+            cv.notify_all(); // all threads accounted for, begin
+        }
+    }
+
+private:
+    int n_threads;
+    int thread_count;
+    std::mutex m;
+    std::condition_variable cv;
+
+};
+
 struct thread_args {
     RCPtr<VBucket> vbucket;
     CheckpointManager *checkpoint_manager;
-    int n_threads;
     std::string name;
+    ThreadGate* gate;
 };
-
-/*
- * atomically increment a threadCount
- * if the calling thread is the last one up, notify_all
- * if the calling thread is not the last one up, wait (in the function)
- */
-static void thread_up(struct thread_args* args) {
-    static int threadCount = 0;
-    static std::mutex m;
-    static std::condition_variable cv;
-    std::unique_lock<std::mutex> lh(m);
-    if (++threadCount != args->n_threads) {
-        cv.wait(lh, [args](){return threadCount == args->n_threads;});
-    } else {
-        cv.notify_all(); // all threads accounted for, begin
-    }
-    lh.unlock();
-}
 
 static void launch_persistence_thread(void *arg) {
     struct thread_args *args = static_cast<struct thread_args *>(arg);
-    thread_up(args);
+    args->gate->threadUp();
 
     bool flush = false;
     while(true) {
@@ -156,7 +173,7 @@ static void launch_persistence_thread(void *arg) {
 
 static void launch_tap_client_thread(void *arg) {
     struct thread_args *args = static_cast<struct thread_args *>(arg);
-    thread_up(args);
+    args->gate->threadUp();
 
     bool flush = false;
     bool isLastItem = false;
@@ -173,7 +190,7 @@ static void launch_tap_client_thread(void *arg) {
 
 static void launch_checkpoint_cleanup_thread(void *arg) {
     struct thread_args *args = static_cast<struct thread_args *>(arg);
-    thread_up(args);
+    args->gate->threadUp();
 
     while (args->checkpoint_manager->getNumOfCursors() > 1) {
         bool newCheckpointCreated;
@@ -184,7 +201,7 @@ static void launch_checkpoint_cleanup_thread(void *arg) {
 
 static void launch_set_thread(void *arg) {
     struct thread_args *args = static_cast<struct thread_args *>(arg);
-    thread_up(args);
+    args->gate->threadUp();
 
     int i(0);
     const int item_count = RUNNING_ON_VALGRIND ? NUM_ITEMS_VG : NUM_ITEMS;
@@ -210,10 +227,10 @@ TEST_F(CheckpointTest, basic_chk_test) {
                                                                   checkpoint_config,
                                                                   1, 0, 0, cb);
 
-    const int n_set_threads = RUNNING_ON_VALGRIND ? NUM_SET_THREADS_VG :
+    const size_t n_set_threads = RUNNING_ON_VALGRIND ? NUM_SET_THREADS_VG :
                                                        NUM_SET_THREADS;
 
-    const int n_tap_threads = RUNNING_ON_VALGRIND ? NUM_TAP_THREADS_VG :
+    const size_t n_tap_threads = RUNNING_ON_VALGRIND ? NUM_TAP_THREADS_VG :
                                                        NUM_TAP_THREADS;
 
     std::vector<cb_thread_t> tap_threads(n_tap_threads);
@@ -222,10 +239,12 @@ TEST_F(CheckpointTest, basic_chk_test) {
     cb_thread_t checkpoint_cleanup_thread;
     int i(0), rc(0);
 
+    const size_t n_threads{n_set_threads + n_tap_threads + 2};
+    ThreadGate gate{n_threads};
     struct thread_args t_args;
     t_args.checkpoint_manager = checkpoint_manager;
     t_args.vbucket = vbucket;
-    t_args.n_threads = n_set_threads + n_tap_threads + 2;
+    t_args.gate = &gate;
 
     std::vector<struct thread_args> tap_t_args(n_tap_threads);
     for (i = 0; i < n_tap_threads; ++i) {
@@ -233,7 +252,7 @@ TEST_F(CheckpointTest, basic_chk_test) {
         tap_t_args[i].checkpoint_manager = checkpoint_manager;
         tap_t_args[i].vbucket = vbucket;
         tap_t_args[i].name = name;
-        tap_t_args[i].n_threads = n_set_threads + n_tap_threads + 2;
+        tap_t_args[i].gate = &gate;
         checkpoint_manager->registerCursor(name, 1, false,
                                            MustSendCheckpointEnd::YES);
     }
