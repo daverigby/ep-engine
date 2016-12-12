@@ -43,7 +43,7 @@ public:
 
     void visitBucket(RCPtr<VBucket> &vb) override {
         bool newCheckpointCreated = false;
-        removed = vb->checkpointManager.removeClosedUnrefCheckpoints(vb,
+        removed = vb->checkpointManager.removeClosedUnrefCheckpoints(*vb.get(),
                                                          newCheckpointCreated);
         // If the new checkpoint is created, notify this event to the
         // corresponding paused TAP & DCP connections.

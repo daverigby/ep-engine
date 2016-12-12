@@ -857,8 +857,7 @@ checkpointCursorInfoList CheckpointManager::getAllCursors() {
     return cursorInfo;
 }
 
-bool CheckpointManager::isCheckpointCreationForHighMemUsage(
-                                              const RCPtr<VBucket> &vbucket) {
+bool CheckpointManager::isCheckpointCreationForHighMemUsage(const VBucket& vbucket) {
     bool forceCreation = false;
     double memoryUsed = static_cast<double>(stats.getTotalMemoryUsed());
     // pesistence and conn cursors are all currently in the open checkpoint?
@@ -868,22 +867,17 @@ bool CheckpointManager::isCheckpointCreationForHighMemUsage(
     if (memoryUsed > stats.mem_high_wat &&
         allCursorsInOpenCheckpoint &&
         (checkpointList.back()->getNumItems() >= MIN_CHECKPOINT_ITEMS ||
-         checkpointList.back()->getNumItems() == vbucket->ht.getNumInMemoryItems())) {
+         checkpointList.back()->getNumItems() == vbucket.ht.getNumInMemoryItems())) {
         forceCreation = true;
     }
     return forceCreation;
 }
 
-size_t CheckpointManager::removeClosedUnrefCheckpoints(
-                                              const RCPtr<VBucket> &vbucket,
-                                              bool &newOpenCheckpointCreated) {
+size_t CheckpointManager::removeClosedUnrefCheckpoints(VBucket& vbucket,
+                                                       bool &newOpenCheckpointCreated) {
 
     // This function is executed periodically by the non-IO dispatcher.
     std::unique_lock<std::mutex> lh(queueLock);
-    if (!vbucket) {
-        throw std::invalid_argument("CheckpointManager::removeCloseUnrefCheckpoints:"
-                        " vbucket must be non-NULL");
-    }
     uint64_t oldCheckpointId = 0;
     bool canCreateNewCheckpoint = false;
     if (checkpointList.size() < checkpointConfig.getMaxCheckpoints() ||
@@ -891,7 +885,7 @@ size_t CheckpointManager::removeClosedUnrefCheckpoints(
          checkpointList.front()->getNumberOfCursors() == 0)) {
         canCreateNewCheckpoint = true;
     }
-    if (vbucket->getState() == vbucket_state_active &&
+    if (vbucket.getState() == vbucket_state_active &&
         canCreateNewCheckpoint) {
 
         bool forceCreation = isCheckpointCreationForHighMemUsage(vbucket);
@@ -951,7 +945,7 @@ size_t CheckpointManager::removeClosedUnrefCheckpoints(
     // the memory overhead.
     if (checkpointConfig.isCheckpointMergeSupported() &&
         !checkpointConfig.canKeepClosedCheckpoints() &&
-        vbucket->getState() == vbucket_state_replica)
+        vbucket.getState() == vbucket_state_replica)
     {
         size_t curr_remains = getNumItemsForCursor_UNLOCKED(pCursorName);
         collapseClosedCheckpoints(unrefCheckpointList);
@@ -1562,7 +1556,7 @@ void CheckpointManager::updateDiskQueueStats(VBucket& vbucket,
 }
 
 void CheckpointManager::checkAndAddNewCheckpoint(uint64_t id,
-                                               const RCPtr<VBucket> &vbucket) {
+                                                 VBucket& vbucket) {
     LockHolder lh(queueLock);
 
     // Ignore CHECKPOINT_START message with ID 0 as 0 is reserved for
