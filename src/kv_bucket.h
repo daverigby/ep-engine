@@ -344,11 +344,6 @@ public:
     void snapshotStats(void);
 
     /**
-     * Get file statistics
-     */
-    DBFileInfo getFileStats(const void *cookie);
-
-    /**
      * Enqueue a background fetch for a key.
      *
      * @param key the key to be bg fetched

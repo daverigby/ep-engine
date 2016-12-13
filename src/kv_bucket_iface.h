@@ -385,8 +385,27 @@ public:
 
     /**
      * Get file statistics
+     *
+     * @param cookie Cookie associated with ADD_STAT
+     * @param add_stat Callback to use to add stats to the caller.
+     * @return ENGINE_SUCCESS if stats were successfully retrieved, or
+     *         ENGINE_KEY_ENOENT if file stats are not available
+     *         from the store.
      */
-    virtual DBFileInfo getFileStats(const void *cookie) = 0;
+    virtual ENGINE_ERROR_CODE getFileStats(const void *cookie,
+                                           ADD_STAT add_stat) = 0;
+
+    /**
+     * Get detailed (per-vbucket) disk stats.
+     *
+     * @param cookie Cookie associated with ADD_STAT
+     * @param add_stat Callback to use to add stats to the caller.
+     * @return ENGINE_SUCCESS if stats were successfully retrieved, or
+     *         ENGINE_KEY_ENOENT if per-vbucket disk stats are not available
+     *         from the store.
+     */
+    virtual ENGINE_ERROR_CODE getPerVBucketDiskStats(const void* cookie,
+                                                     ADD_STAT add_stat) = 0;
 
     /**
      * Enqueue a background fetch for a key.

@@ -35,4 +35,10 @@ public:
     bool initialize() override;
 
     void deinitialize() override;
+
+    ENGINE_ERROR_CODE getFileStats(const void* cookie,
+                                   ADD_STAT add_stat) override;
+
+    ENGINE_ERROR_CODE getPerVBucketDiskStats(const void* cookie,
+                                             ADD_STAT add_stat) override;
 };

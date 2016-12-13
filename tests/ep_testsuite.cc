@@ -6083,8 +6083,6 @@ static enum test_result test_mb19687_fixed(ENGINE_HANDLE* h,
                 "vb_0:bloom_filter",
                 "vb_0:bloom_filter_key_count",
                 "vb_0:bloom_filter_size",
-                "vb_0:db_data_size",
-                "vb_0:db_file_size",
                 "vb_0:drift_ahead_threshold",
                 "vb_0:drift_ahead_threshold_exceeded",
                 "vb_0:drift_behind_threshold",
@@ -6349,18 +6347,6 @@ static enum test_result test_mb19687_fixed(ENGINE_HANDLE* h,
                 "vb_0:num_erroneous_entries_erased"
             }
         },
-        {"diskinfo",
-            {
-                "ep_db_data_size",
-                "ep_db_file_size"
-            }
-        },
-        {"diskinfo detail",
-            {
-                "vb_0:data_size",
-                "vb_0:file_size"
-            }
-        },
         {"", // Note: we convert empty to a null to get engine stats
             {
                 "bytes",
@@ -6415,8 +6401,6 @@ static enum test_result test_mb19687_fixed(ENGINE_HANDLE* h,
                 "ep_cursor_dropping_upper_threshold",
                 "ep_cursors_dropped",
                 "ep_data_traffic_enabled",
-                "ep_db_data_size",
-                "ep_db_file_size",
                 "ep_dbname",
                 "ep_dcp_backfill_byte_limit",
                 "ep_dcp_conn_buffer_size",
@@ -6659,6 +6643,25 @@ static enum test_result test_mb19687_fixed(ENGINE_HANDLE* h,
                                            "ep_warmup_oom",
                                            "ep_warmup_time",
                                            "ep_warmup_thread"});
+    }
+
+    if (isPersistentBucket(h, h1)) {
+        // Add data_size and file_size stats to toplevel group.
+        auto& eng_stats = statsKeys.at("");
+        eng_stats.insert(eng_stats.end(), {"ep_db_data_size",
+                                           "ep_db_file_size"});
+
+        // 'diskinfo and 'diskinfo detail' keys should be present now.
+        statsKeys["diskinfo"] = {"ep_db_data_size",
+                                 "ep_db_file_size"};
+        statsKeys["diskinfo detail"] = {"vb_0:data_size",
+                                        "vb_0:file_size"};
+
+        // data and file size stats should be added to the vbucket-details
+        // set.
+        auto& vb_details0 = statsKeys.at("vbucket-details 0");
+        vb_details0.insert(vb_details0.end(), {"vb_0:db_data_size",
+                                               "vb_0:db_file_size"});
     }
 
     bool error = false;

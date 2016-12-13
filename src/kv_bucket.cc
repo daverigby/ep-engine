@@ -1596,21 +1596,6 @@ void KVBucket::snapshotStats() {
     getOneRWUnderlying()->snapshotStats(snap.smap);
 }
 
-DBFileInfo KVBucket::getFileStats(const void *cookie) {
-    uint16_t numShards = vbMap.getNumShards();
-    DBFileInfo totalInfo;
-
-    for (uint16_t shardId = 0; shardId < numShards; shardId++) {
-        KVStore *store = getRWUnderlyingByShard(shardId);
-        DBFileInfo dbInfo = store->getAggrDbFileInfo();
-        totalInfo.spaceUsed += dbInfo.spaceUsed;
-        totalInfo.fileSize += dbInfo.fileSize;
-    }
-
-    return totalInfo;
-}
-
-
 void KVBucket::updateBGStats(const hrtime_t init, const hrtime_t start,
                              const hrtime_t stop) {
     if (stop >= start && start >= init) {
