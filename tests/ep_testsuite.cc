@@ -1704,14 +1704,21 @@ static enum test_result test_stats_seqno(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1)
 
     checkeq(100, get_int_stat(h, h1, "vb_0:high_seqno", "vbucket-seqno"),
             "Invalid seqno");
-    checkeq(100, get_int_stat(h, h1, "vb_0:last_persisted_seqno", "vbucket-seqno"),
-            "Unexpected last_persisted_seqno");
+
+    if (isPersistentBucket(h, h1)) {
+        checkeq(100,
+                get_int_stat(h, h1, "vb_0:last_persisted_seqno", "vbucket-seqno"),
+                "Unexpected last_persisted_seqno");
+    }
     checkeq(0, get_int_stat(h, h1, "vb_1:high_seqno", "vbucket-seqno"),
             "Invalid seqno");
     checkeq(0, get_int_stat(h, h1, "vb_1:high_seqno", "vbucket-seqno 1"),
             "Invalid seqno");
-    checkeq(0, get_int_stat(h, h1, "vb_1:last_persisted_seqno", "vbucket-seqno 1"),
-            "Invalid last_persisted_seqno");
+    if (isPersistentBucket(h, h1)) {
+        checkeq(0,
+                get_int_stat(h, h1, "vb_1:last_persisted_seqno", "vbucket-seqno 1"),
+                "Invalid last_persisted_seqno");
+    }
 
     uint64_t vb_uuid = get_ull_stat(h, h1, "vb_1:0:id", "failovers");
 
@@ -1822,12 +1829,14 @@ static enum test_result test_item_stats(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) 
 
     check_key_value(h, h1, "key1", "someothervalue", 14);
 
-    checkeq(3, get_int_stat(h, h1, "vb_active_ops_create"),
-            "Expected 3 creations");
-    checkeq(1, get_int_stat(h, h1, "vb_active_ops_update"),
-            "Expected 1 updation");
-    checkeq(1, get_int_stat(h, h1, "vb_active_ops_delete"),
-            "Expected 1 deletion");
+    if (isPersistentBucket(h, h1)) {
+        checkeq(3, get_int_stat(h, h1, "vb_active_ops_create"),
+                "Expected 3 creations");
+        checkeq(1, get_int_stat(h, h1, "vb_active_ops_update"),
+                "Expected 1 updation");
+        checkeq(1, get_int_stat(h, h1, "vb_active_ops_delete"),
+                "Expected 1 deletion");
+    }
 
     return SUCCESS;
 }
@@ -1850,27 +1859,31 @@ static enum test_result test_mem_stats(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
     int itemsRemoved = get_int_stat(h, h1, "ep_items_rm_from_checkpoints");
     wait_for_persisted_value(h, h1, "key", value);
     testHarness.time_travel(65);
-    wait_for_stat_change(h, h1, "ep_items_rm_from_checkpoints", itemsRemoved);
+    if (isPersistentBucket(h, h1)) {
+        wait_for_stat_change(h, h1, "ep_items_rm_from_checkpoints", itemsRemoved);
+    }
     int mem_used = get_int_stat(h, h1, "mem_used");
     int cache_size = get_int_stat(h, h1, "ep_total_cache_size");
     int overhead = get_int_stat(h, h1, "ep_overhead");
     int value_size = get_int_stat(h, h1, "ep_value_size");
     check((mem_used - overhead) > cache_size,
           "ep_kv_size should be greater than the hashtable cache size due to the checkpoint overhead");
-    evict_key(h, h1, "key", 0, "Ejected.");
 
-    check(get_int_stat(h, h1, "ep_total_cache_size") <= cache_size,
-          "Evict a value shouldn't increase the total cache size");
-    check(get_int_stat(h, h1, "mem_used") < mem_used,
-          "Expected mem_used to decrease when an item is evicted");
+    if (isPersistentBucket(h, h1)) {
+        evict_key(h, h1, "key", 0, "Ejected.");
 
-    check_key_value(h, h1, "key", value, strlen(value), 0); // Load an item from disk again.
+        check(get_int_stat(h, h1, "ep_total_cache_size") <= cache_size,
+              "Evict a value shouldn't increase the total cache size");
+        check(get_int_stat(h, h1, "mem_used") < mem_used,
+              "Expected mem_used to decrease when an item is evicted");
 
-    check(get_int_stat(h, h1, "mem_used") >= mem_used,
-          "Expected mem_used to remain the same after an item is loaded from disk");
-    check(get_int_stat(h, h1, "ep_value_size") == value_size,
-          "Expected ep_value_size to remain the same after item is loaded from disk");
+        check_key_value(h, h1, "key", value, strlen(value), 0); // Load an item from disk again.
 
+        check(get_int_stat(h, h1, "mem_used") >= mem_used,
+              "Expected mem_used to remain the same after an item is loaded from disk");
+        check(get_int_stat(h, h1, "ep_value_size") == value_size,
+              "Expected ep_value_size to remain the same after item is loaded from disk");
+    }
     return SUCCESS;
 }
 
@@ -7033,36 +7046,36 @@ BaseTestCase testsuite_testcases[] = {
         TestCase("test observe single key", test_observe_single_key, test_setup, teardown,
                  NULL, prepare_ep_bucket, cleanup),
         TestCase("test observe on temp item", test_observe_temp_item, test_setup, teardown,
-                 NULL, prepare, cleanup),
+                 NULL, prepare_ep_bucket, cleanup),
         TestCase("test observe multi key", test_observe_multi_key, test_setup, teardown,
-                 NULL, prepare, cleanup),
+                 NULL, prepare_ep_bucket, cleanup),
         TestCase("test multiple observes", test_multiple_observes, test_setup, teardown,
-                 NULL, prepare, cleanup),
+                 NULL, prepare_ep_bucket, cleanup),
         TestCase("test observe with not found", test_observe_with_not_found, test_setup,
-                 teardown, NULL, prepare, cleanup),
+                 teardown, NULL, prepare_ep_bucket, cleanup),
         TestCase("test observe not my vbucket", test_observe_errors, test_setup,
-                 teardown, NULL, prepare, cleanup),
+                 teardown, NULL, prepare_ep_bucket, cleanup),
         TestCase("test observe seqno basic tests", test_observe_seqno_basic_tests,
-                 test_setup, teardown, NULL, prepare, cleanup),
+                 test_setup, teardown, NULL, prepare_ep_bucket, cleanup),
         TestCase("test observe seqno failover", test_observe_seqno_failover,
                  test_setup, teardown, NULL, prepare, cleanup),
         TestCase("test observe seqno error", test_observe_seqno_error,
                  test_setup, teardown, NULL, prepare, cleanup),
         TestCase("test item pager", test_item_pager, test_setup,
-                 teardown, "max_size=6291456", prepare, cleanup),
+                 teardown, "max_size=6291456", prepare_ep_bucket, cleanup),
         TestCase("warmup conf", test_warmup_conf, test_setup,
                  teardown, NULL, prepare, cleanup),
         TestCase("bloomfilter conf", test_bloomfilter_conf, test_setup,
                  teardown, NULL, prepare, cleanup),
         TestCase("test bloomfilters",
                  test_bloomfilters, test_setup,
-                 teardown, NULL, prepare, cleanup),
+                 teardown, NULL, prepare_ep_bucket, cleanup),
         TestCase("test bloomfilters with store apis",
                  test_bloomfilters_with_store_apis, test_setup,
-                 teardown, NULL, prepare, cleanup),
+                 teardown, NULL, prepare_ep_bucket, cleanup),
         TestCase("test bloomfilters's in a delete+set scenario",
                  test_bloomfilter_delete_plus_set_scenario, test_setup,
-                 teardown, NULL, prepare, cleanup),
+                 teardown, NULL, prepare_ep_bucket, cleanup),
         TestCase("test datatype", test_datatype, test_setup,
                  teardown, NULL, prepare, cleanup),
         TestCase("test datatype with unknown command", test_datatype_with_unknown_command,
@@ -7102,7 +7115,7 @@ BaseTestCase testsuite_testcases[] = {
         TestCase("stats vkey", test_vkey_stats, test_setup,
                  teardown, NULL, prepare, cleanup),
         TestCase("stats vkey callback tests", test_stats_vkey_valid_field,
-                 test_setup, teardown, NULL, prepare, cleanup),
+                 test_setup, teardown, NULL, prepare_ep_bucket, cleanup),
         TestCase("warmup stats", test_warmup_stats, test_setup,
                  teardown, NULL, prepare, cleanup),
         TestCase("warmup with threshold", test_warmup_with_threshold,
@@ -7111,7 +7124,7 @@ BaseTestCase testsuite_testcases[] = {
         TestCase("seqno stats", test_stats_seqno,
                  test_setup, teardown, NULL, prepare, cleanup),
         TestCase("diskinfo stats", test_stats_diskinfo,
-                 test_setup, teardown, NULL, prepare, cleanup),
+                 test_setup, teardown, NULL, prepare_ep_bucket, cleanup),
         TestCase("stats curr_items ADD SET", test_curr_items_add_set,
                  test_setup, teardown, NULL, prepare, cleanup),
         TestCase("stats curr_items DELETE", test_curr_items_delete,
