@@ -155,8 +155,6 @@ std::unordered_map<std::string, StatProperties> stat_tests =
      {"workload", {"workload", StatRuntime::Fast, {}} },
      {"failovers_vb0", {"failovers 0", StatRuntime::Fast, {}} },
      {"failovers", {"failovers", StatRuntime::Slow, {}} },
-     {"diskinfo", {"diskinfo", StatRuntime::Fast, {}} },
-     {"diskinfo-detail", {"diskinfo-detail", StatRuntime::Slow, {}} },
     };
 
 static void fillLineWith(const char c, int spaces) {
@@ -1228,6 +1226,14 @@ static void perf_stat_latency_core(ENGINE_HANDLE *h,
         tests.insert({"warmup", {"warmup", StatRuntime::Fast, {}} });
     }
 
+    if (isPersistentBucket(h, h1)) {
+        // Include persistence-specific stats
+        tests.insert({{"diskinfo",
+                          {"diskinfo", StatRuntime::Fast, {}} },
+                      {"diskinfo-detail",
+                          {"diskinfo-detail", StatRuntime::Slow, {}}}});
+    }
+
     for (auto& stat : stat_tests) {
         if (stat.second.runtime == statRuntime) {
             for (int ii = 0; ii < iterations; ii++) {
@@ -1270,7 +1276,9 @@ static enum test_result perf_stat_latency(ENGINE_HANDLE *h,
         check(set_vbucket_state(h, h1, vb, vbucket_state_active),
               "Failed set_vbucket_state for vbucket");
     }
-    wait_for_stat_to_be(h, h1, "ep_persist_vbstate_total", active_vbuckets);
+    if (isPersistentBucket(h, h1)) {
+        wait_for_stat_to_be(h, h1, "ep_persist_vbstate_total", active_vbuckets);
+    }
 
     // Only timing front-end performance, not considering persistence.
     stop_persistence(h, h1);

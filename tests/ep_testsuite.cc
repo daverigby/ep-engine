@@ -6158,9 +6158,6 @@ static enum test_result test_mb19687_fixed(ENGINE_HANDLE* h,
                 "vb_0:num_open_checkpoint_items",
                 "vb_0:open_checkpoint_id",
                 "vb_0:persisted_checkpoint_id",
-                "vb_0:persistence:cursor_checkpoint_id",
-                "vb_0:persistence:cursor_seqno",
-                "vb_0:persistence:num_visits",
                 "vb_0:state"
             }
         },
@@ -6175,9 +6172,6 @@ static enum test_result test_mb19687_fixed(ENGINE_HANDLE* h,
                 "vb_0:num_open_checkpoint_items",
                 "vb_0:open_checkpoint_id",
                 "vb_0:persisted_checkpoint_id",
-                "vb_0:persistence:cursor_checkpoint_id",
-                "vb_0:persistence:cursor_seqno",
-                "vb_0:persistence:num_visits",
                 "vb_0:state"
             }
         },
@@ -6646,6 +6640,17 @@ static enum test_result test_mb19687_fixed(ENGINE_HANDLE* h,
     }
 
     if (isPersistentBucket(h, h1)) {
+        // Add stats which are only available for persistent buckets:
+        static const char* persistence_stats[] = {
+            "vb_0:persistence:cursor_checkpoint_id",
+            "vb_0:persistence:cursor_seqno",
+            "vb_0:persistence:num_visits"
+        };
+        for (auto& stat : persistence_stats) {
+            statsKeys.at("checkpoint").push_back(stat);
+            statsKeys.at("checkpoint 0").push_back(stat);
+        }
+
         // Add data_size and file_size stats to toplevel group.
         auto& eng_stats = statsKeys.at("");
         eng_stats.insert(eng_stats.end(), {"ep_db_data_size",
@@ -7165,7 +7170,7 @@ BaseTestCase testsuite_testcases[] = {
 
         // eviction
         TestCase("value eviction", test_value_eviction, test_setup,
-                 teardown, NULL, prepare, cleanup),
+                 teardown, NULL, prepare_ep_bucket, cleanup),
         // duplicate items on disk
         TestCase("duplicate items on disk", test_duplicate_items_disk,
                  test_setup, teardown, NULL, prepare, cleanup),
@@ -7207,31 +7212,31 @@ BaseTestCase testsuite_testcases[] = {
         // disk>RAM tests
         TestCase("disk>RAM golden path", test_disk_gt_ram_golden,
                  test_setup, teardown,
-                 "chk_remover_stime=1;chk_period=60", prepare, cleanup),
+                 "chk_remover_stime=1;chk_period=60", prepare_ep_bucket, cleanup),
         TestCase("disk>RAM paged-out rm", test_disk_gt_ram_paged_rm,
                  test_setup, teardown,
-                 "chk_remover_stime=1;chk_period=60", prepare, cleanup),
+                 "chk_remover_stime=1;chk_period=60", prepare_ep_bucket, cleanup),
         TestCase("disk>RAM update paged-out", test_disk_gt_ram_update_paged_out,
-                 test_setup, teardown, NULL, prepare, cleanup),
+                 test_setup, teardown, NULL, prepare_ep_bucket, cleanup),
         TestCase("disk>RAM delete paged-out", test_disk_gt_ram_delete_paged_out,
-                 test_setup, teardown, NULL, prepare, cleanup),
+                 test_setup, teardown, NULL, prepare_ep_bucket, cleanup),
         TestCase("disk>RAM set bgfetch race", test_disk_gt_ram_set_race,
-                 test_setup, teardown, NULL, prepare, cleanup, true),
+                 test_setup, teardown, NULL, prepare_ep_bucket, cleanup, true),
         TestCase("disk>RAM delete bgfetch race", test_disk_gt_ram_rm_race,
-                 test_setup, teardown, NULL, prepare, cleanup, true),
+                 test_setup, teardown, NULL, prepare_ep_bucket, cleanup, true),
         // disk>RAM tests with WAL
         TestCase("disk>RAM golden path (wal)", test_disk_gt_ram_golden,
                  test_setup, teardown, MULTI_DISPATCHER_CONFIG,
-                 prepare, cleanup),
+                 prepare_ep_bucket, cleanup),
         TestCase("disk>RAM paged-out rm (wal)", test_disk_gt_ram_paged_rm,
                  test_setup, teardown, MULTI_DISPATCHER_CONFIG,
-                 prepare, cleanup),
+                 prepare_ep_bucket, cleanup),
         TestCase("disk>RAM update paged-out (wal)",
                  test_disk_gt_ram_update_paged_out, test_setup,
-                 teardown, MULTI_DISPATCHER_CONFIG, prepare, cleanup),
+                 teardown, MULTI_DISPATCHER_CONFIG, prepare_ep_bucket, cleanup),
         TestCase("disk>RAM delete paged-out (wal)",
                  test_disk_gt_ram_delete_paged_out, test_setup,
-                 teardown, MULTI_DISPATCHER_CONFIG, prepare, cleanup),
+                 teardown, MULTI_DISPATCHER_CONFIG, prepare_ep_bucket, cleanup),
         // vbucket negative tests
         TestCase("vbucket get (dead)", test_wrong_vb_get,
                  test_setup, teardown, NULL, prepare, cleanup),
@@ -7299,7 +7304,7 @@ BaseTestCase testsuite_testcases[] = {
         TestCase("test vbucket destroy stats", test_vbucket_destroy_stats,
                  test_setup, teardown,
                  "chk_remover_stime=1;chk_period=60",
-                 prepare, cleanup),
+                 prepare_ep_bucket, cleanup),
         TestCase("test async vbucket destroy restart",
                  test_async_vbucket_destroy_restart, test_setup, teardown,
                  NULL, prepare, cleanup),
@@ -7328,7 +7333,7 @@ BaseTestCase testsuite_testcases[] = {
 
         // Transaction tests
         TestCase("multiple transactions", test_multiple_transactions,
-                 test_setup, teardown, NULL, prepare, cleanup),
+                 test_setup, teardown, NULL, prepare_ep_bucket, cleanup),
 
         // Returning meta tests
         TestCase("test set ret meta", test_set_ret_meta,
@@ -7346,48 +7351,59 @@ BaseTestCase testsuite_testcases[] = {
 
         TestCase("test set with item_eviction",
                  test_set_with_item_eviction, test_setup, teardown,
-                 "item_eviction_policy=full_eviction", prepare, cleanup),
+                 "item_eviction_policy=full_eviction", prepare_full_eviction,
+                 cleanup),
         TestCase("test set_with_meta with item_eviction",
                  test_setWithMeta_with_item_eviction, test_setup, teardown,
-                 "item_eviction_policy=full_eviction", prepare, cleanup),
+                 "item_eviction_policy=full_eviction", prepare_full_eviction,
+                 cleanup),
         TestCase("test multiple set and del with meta with item_eviction",
                  test_multiple_set_delete_with_metas_full_eviction,
                  test_setup, teardown,
                  "item_eviction_policy=full_eviction",
-                 prepare, cleanup),
+                 prepare_full_eviction, cleanup),
         TestCase("test add with item_eviction",
                  test_add_with_item_eviction, test_setup, teardown,
-                 "item_eviction_policy=full_eviction", prepare, cleanup),
+                 "item_eviction_policy=full_eviction", prepare_full_eviction,
+                 cleanup),
         TestCase("test replace with eviction", test_replace_with_eviction,
                  test_setup, teardown,
-                  NULL, prepare, cleanup),
+                  NULL, prepare_ep_bucket, cleanup),
         TestCase("test replace with eviction (full)", test_replace_with_eviction,
                  test_setup, teardown,
-                 "item_eviction_policy=full_eviction", prepare, cleanup),
+                 "item_eviction_policy=full_eviction", prepare_full_eviction,
+                 cleanup),
         TestCase("test get_and_touch with item_eviction",
                  test_gat_with_item_eviction, test_setup, teardown,
-                 "item_eviction_policy=full_eviction", prepare, cleanup),
+                 "item_eviction_policy=full_eviction", prepare_full_eviction,
+                 cleanup),
         TestCase("test key_stats with item_eviction",
                  test_keyStats_with_item_eviction, test_setup, teardown,
-                 "item_eviction_policy=full_eviction", prepare, cleanup),
+                 "item_eviction_policy=full_eviction", prepare_full_eviction,
+                 cleanup),
         TestCase("test del with item_eviction",
                  test_del_with_item_eviction, test_setup, teardown,
-                 "item_eviction_policy=full_eviction", prepare, cleanup),
+                 "item_eviction_policy=full_eviction", prepare_full_eviction,
+                 cleanup),
         TestCase("test del_with_meta with item_eviction",
                  test_delWithMeta_with_item_eviction, test_setup, teardown,
-                 "item_eviction_policy=full_eviction", prepare, cleanup),
+                 "item_eviction_policy=full_eviction", prepare_full_eviction,
+                 cleanup),
         TestCase("test observe with item_eviction",
                  test_observe_with_item_eviction, test_setup, teardown,
-                 "item_eviction_policy=full_eviction", prepare, cleanup),
+                 "item_eviction_policy=full_eviction", prepare_full_eviction,
+                 cleanup),
         TestCase("test expired item with item_eviction",
                  test_expired_item_with_item_eviction, test_setup, teardown,
-                 "item_eviction_policy=full_eviction", prepare, cleanup),
+                 "item_eviction_policy=full_eviction", prepare_full_eviction,
+                 cleanup),
         TestCase("test get & delete on non existent items",
                  test_non_existent_get_and_delete, test_setup, teardown,
-                 "item_eviction_policy=full_eviction", prepare, cleanup),
+                 "item_eviction_policy=full_eviction", prepare_full_eviction,
+                 cleanup),
         TestCase("test MB-16421", test_mb16421,
                  test_setup, teardown, "item_eviction_policy=full_eviction",
-                 prepare, cleanup),
+                 prepare_full_eviction, cleanup),
 
         TestCase("test get random key", test_get_random_key,
                  test_setup, teardown, NULL, prepare, cleanup),
@@ -7402,7 +7418,8 @@ BaseTestCase testsuite_testcases[] = {
 
         TestCase("test_mb17517_tap_with_locked_key",
                  test_mb17517_tap_with_locked_key, test_setup, teardown, NULL,
-                 prepare, cleanup),
+                 /*TAP not supported for non-EP buckets*/prepare_ep_bucket,
+                 cleanup),
 
         TestCase("test_mb19635_upgrade_from_25x",
                  test_mb19635_upgrade_from_25x, test_setup, teardown, NULL,
@@ -7416,13 +7433,14 @@ BaseTestCase testsuite_testcases[] = {
         TestCase("test vbucket compact no purge", test_vbucket_compact_no_purge,
                  test_setup, teardown, NULL, prepare, cleanup),
 
-        TestCase("test_MB-20697", test_mb20697, test_setup, teardown, NULL, prepare,
-                 cleanup),
+        TestCase("test_MB-20697", test_mb20697, test_setup, teardown, NULL,
+                 prepare_ep_bucket, cleanup),
         TestCase("test_MB-test_mb20943_remove_pending_ops_on_vbucket_delete",
                  test_mb20943_complete_pending_ops_on_vbucket_delete,
                  test_setup, teardown, NULL, prepare, cleanup),
         TestCase("test_mb20744_check_incr_reject_ops",
                  test_mb20744_check_incr_reject_ops,
-                 test_setup, teardown, NULL, prepare, cleanup),
+                 test_setup, teardown, NULL, prepare_ep_bucket, cleanup),
+
         TestCase(NULL, NULL, NULL, NULL, NULL, prepare, cleanup)
 };

@@ -2087,7 +2087,9 @@ BaseTestCase testsuite_testcases[] = {
                  test_set_with_meta_race_with_delete, test_setup,
                  teardown, NULL, prepare, cleanup),
         TestCase("test set_with_meta exp persisted", test_exp_persisted_set_del,
-                 test_setup, teardown, "exp_pager_stime=3", prepare, cleanup),
+                 test_setup, teardown, "exp_pager_stime=3",
+                 prepare_ep_bucket,  // Requires persistence
+                 cleanup),
         TestCase("test del meta conflict resolution",
                  test_del_meta_conflict_resolution, test_setup, teardown, NULL,
                  prepare, cleanup),
@@ -2108,7 +2110,8 @@ BaseTestCase testsuite_testcases[] = {
                  "exp_pager_stime=1", prepare, cleanup),
         TestCase("test get_meta with item_eviction",
                  test_getMeta_with_item_eviction, test_setup, teardown,
-                 "item_eviction_policy=full_eviction", prepare, cleanup),
+                 "item_eviction_policy=full_eviction", prepare_full_eviction,
+                 cleanup),
 
         TestCase("test set_with_meta and drift stats",
                  test_set_with_meta_and_check_drift_stats, test_setup,
