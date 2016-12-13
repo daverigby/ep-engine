@@ -19,7 +19,6 @@
 
 #include "ep_engine.h"
 
-
 EphemeralBucket::EphemeralBucket(EventuallyPersistentEngine& theEngine)
     : KVBucket(theEngine) {
 }
