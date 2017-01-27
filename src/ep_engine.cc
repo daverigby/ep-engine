@@ -4482,11 +4482,16 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::getStats(const void* cookie,
     if (stat_key == NULL) {
         rv = doEngineStats(cookie, add_stat);
     } else if (nkey > 7 && cb_isPrefix(statKey, "tapagg ")) {
-        rv = doConnAggStats(cookie, add_stat, stat_key + 7, nkey - 7, TAP_CONN);
+        if (configuration.isTap()) {
+            rv = doConnAggStats(
+                    cookie, add_stat, stat_key + 7, nkey - 7, TAP_CONN);
+        }
     } else if (nkey > 7 && cb_isPrefix(statKey, "dcpagg ")) {
         rv = doConnAggStats(cookie, add_stat, stat_key + 7, nkey - 7, DCP_CONN);
     } else if (statKey == "tap") {
-        rv = doTapStats(cookie, add_stat);
+        if (configuration.isTap()) {
+            rv = doTapStats(cookie, add_stat);
+        }
     } else if (statKey == "dcp") {
         rv = doDcpStats(cookie, add_stat);
     } else if (statKey == "hash") {
