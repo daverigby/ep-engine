@@ -108,6 +108,8 @@ public:
         return nullptr;
     }
 
+    void dump() const override;
+
 private:
     std::tuple<StoredValue*, MutationStatus, VBNotifyCtx> updateStoredValue(
             const HashTable::HashBucketLock& hbl,

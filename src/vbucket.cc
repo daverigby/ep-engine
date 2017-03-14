@@ -380,7 +380,7 @@ void VBucket::handlePreExpiry(StoredValue& v) {
     }
 }
 
-size_t VBucket::getNumNonResidentItems(item_eviction_policy_t policy) {
+size_t VBucket::getNumNonResidentItems(item_eviction_policy_t policy) const {
     if (policy == VALUE_ONLY) {
         return ht.getNumInMemoryNonResItems();
     } else {
@@ -1812,6 +1812,13 @@ bool VBucket::deleteKey(const DocKey& key) {
         return false;
     }
     return deleteStoredValue(hbl, *v);
+}
+
+void VBucket::dump() const {
+    std::cerr << "VBucket[" << this << "] with state: " << toString(getState())
+              << " numItems:" << getNumItems()
+              << " numNonResident:" << getNumNonResidentItems(eviction)
+              << std::endl;
 }
 
 void VBucket::_addStats(bool details, ADD_STAT add_stat, const void* c) {
