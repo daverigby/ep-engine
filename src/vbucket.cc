@@ -1816,8 +1816,7 @@ bool VBucket::deleteKey(const DocKey& key) {
 void VBucket::dump() const {
     std::cerr << "VBucket[" << this << "] with state: " << toString(getState())
               << " numItems:" << getNumItems()
-              << " numNonResident:" << getNumNonResidentItems(eviction)
-              << std::endl;
+              << " numNonResident:" << getNumNonResidentItems() << std::endl;
 }
 
 void VBucket::_addStats(bool details, ADD_STAT add_stat, const void* c) {
