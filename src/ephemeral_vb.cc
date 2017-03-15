@@ -69,6 +69,21 @@ void EphemeralVBucket::completeStatsVKey(
             std::string(reinterpret_cast<const char*>(key.data()), key.size()));
 }
 
+bool EphemeralVBucket::htUnlockedEjectItem(const HashTable::HashBucketLock& lh,
+                                           StoredValue*& v) {
+    VBQueueItemCtx queueCtx(GenerateBySeqno::Yes,
+                            GenerateCas::Yes,
+                            TrackCasDrift::No,
+                            /*isBackfill*/ false,
+                            nullptr);
+    v->setRevSeqno(v->getRevSeqno() + 1);
+    StoredValue* val;
+    VBNotifyCtx notifyCtx;
+    std::tie(val, notifyCtx) = softDeleteStoredValue(
+            lh, *v, /*onlyMarkDeleted*/ false, queueCtx, 0);
+    return true;
+}
+
 void EphemeralVBucket::addStats(bool details,
                                 ADD_STAT add_stat,
                                 const void* c) {

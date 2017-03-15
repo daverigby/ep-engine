@@ -775,8 +775,14 @@ public:
                                                      const char** msg) = 0;
 
     /**
-     * Eject a StoredValue from memory.
+     * Page out a StoredValue from memory.
      *
+     * The definition of "page out" is up to the underlying VBucket
+     * implementation - this may mean simply ejecting the value from memory
+     * (Value Eviction), removing the entire document from memory (Full Eviction),
+     * or actually deleting the document (Ephemeral Buckets).
+     *
+     * @param lh Bucket lock associated with the StoredValue.
      * @param v[in, out] Ref to the StoredValue to be ejected. Based on the
      *                   VBucket type, policy in the vbucket contents of v and
      *                   v itself may be changed

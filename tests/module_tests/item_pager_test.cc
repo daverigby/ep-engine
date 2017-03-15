@@ -173,13 +173,8 @@ TEST_P(STItemPagerTest, ServerQuotaReached) {
 
     runItemPager();
 
-    if (GetParam() == "persistent") {
-        // TODO: Currently this fails under Ephemeral because doEviction calls
-        // EphemeralVB::htUnlockedEjectItem
-        // which always returns false. Need to use a new pager which calls delete.
-        EXPECT_LT(stats.getTotalMemoryUsed(), stats.mem_low_wat.load())
+    EXPECT_LT(stats.getTotalMemoryUsed(), stats.mem_low_wat.load())
             << "Expected to be below low watermark after running item pager";
-    }
 }
 
 // Test that when the server quota is reached, we delete items which have
@@ -241,6 +236,77 @@ TEST_P(STItemPagerTest, ExpiredItemsDeletedFirst) {
     }
 }
 
+/**
+ * Test fixture for Ephemeral-only item pager tests.
+ */
+class STEphemeralItemPagerTest : public STItemPagerTest {
+};
+
+// For Ephemeral buckets, replica items should not be paged out (deleted) -
+// as that would cause the replica to have a diverging history from the active.
+TEST_P(STEphemeralItemPagerTest, ReplicaNotPaged) {
+    const uint16_t active_vb = 0;
+    const uint16_t replica_vb = 1;
+    // Set vBucket 1 online, initially as active (so we can populate it).
+    store->setVBucketState(replica_vb, vbucket_state_active, false);
+
+    auto& stats = engine->getEpStats();
+    ASSERT_LE(stats.getTotalMemoryUsed(), 40 * 1024)
+        << "Expected to start with less than 40KB of memory used";
+    ASSERT_LT(stats.getTotalMemoryUsed(), stats.mem_low_wat.load())
+        << "Expected to start below low watermark";
+
+    // Populate vbid 1 (to be replica) until we reach the low watermark.
+    size_t replica_count = 0;
+    const std::string value(512, 'x'); // 512B value to use for documents.
+    do {
+        auto key = makeStoredDocKey("key_" + std::to_string(replica_count));
+        auto item = make_item(replica_vb, key, value);
+        // Set NRU of item to maximum; so will be a candidate for paging out
+        // straight away (not that replica Items /should/ get paged out in
+        // this test).
+        item.setNRUValue(MAX_NRU_VALUE);
+        uint64_t cas;
+        ASSERT_EQ(ENGINE_SUCCESS,
+                  engine->store(nullptr, &item, &cas, OPERATION_SET));
+        replica_count++;
+    } while (stats.getTotalMemoryUsed() < stats.mem_low_wat.load());
+
+    ASSERT_GE(replica_count, 10)
+            << "Expected at least 10 items before hitting low watermark";
+
+    // Populate vbid 0 until we reach the high watermark.
+    size_t active_count = 0;
+    ENGINE_ERROR_CODE result;
+    for (result = ENGINE_SUCCESS; result == ENGINE_SUCCESS; active_count++) {
+        auto key = makeStoredDocKey("key_" + std::to_string(active_count));
+        auto item = make_item(active_vb, key, value);
+        // Set NRU of item to maximum; so will be a candidate for paging out
+        // straight away.
+        item.setNRUValue(MAX_NRU_VALUE);
+
+        uint64_t cas;
+        result = engine->store(nullptr, &item, &cas, OPERATION_SET);
+    }
+    ASSERT_EQ(ENGINE_TMPFAIL, result);
+    ASSERT_GE(active_count, 10)
+        << "Expected at least 10 active items before hitting high watermark";
+
+    // Flip vb 1 to be a replica (and hence should not be a candidate for
+    // any paging out.
+    store->setVBucketState(replica_vb, vbucket_state_replica, false);
+
+    runItemPager();
+
+    EXPECT_EQ(replica_count, store->getVBucket(replica_vb)->getNumItems())
+        << "Replica count should be unchanged after Item Pager";
+
+    EXPECT_LT(stats.getTotalMemoryUsed(), stats.mem_low_wat.load())
+            << "Expected to be below low watermark after running item pager";
+
+    EXPECT_LT(store->getVBucket(active_vb)->getNumItems(), active_count)
+        << "Active count should have decreased after Item Pager";
+}
 
 /**
  * Test fixture for expiry pager tests - enables the Expiry Pager (in addition
@@ -379,6 +445,13 @@ INSTANTIATE_TEST_CASE_P(EphemeralOrPersistent,
 INSTANTIATE_TEST_CASE_P(EphemeralOrPersistent,
                         STExpiryPagerTest,
                         ::testing::Values("ephemeral", "persistent"),
+                        [](const ::testing::TestParamInfo<std::string>& info) {
+                            return info.param;
+                        });
+
+INSTANTIATE_TEST_CASE_P(Ephemeral,
+                        STEphemeralItemPagerTest,
+                        ::testing::Values("ephemeral"),
                         [](const ::testing::TestParamInfo<std::string>& info) {
                             return info.param;
                         });
