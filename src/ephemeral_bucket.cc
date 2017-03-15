@@ -21,6 +21,43 @@
 #include "ephemeral_vb.h"
 #include "failover-table.h"
 
+#include <platform/sized_buffer.h>
+
+/**
+ * A configuration value changed listener that responds to Ephemeral bucket
+ * parameter changes.
+ */
+class EphemeralValueChangedListener : public ValueChangedListener {
+public:
+    EphemeralValueChangedListener(EphemeralBucket& bucket)
+        : bucket(bucket) {
+    }
+
+    void stringValueChanged(const std::string& key,
+                            const char* value) override {
+        if (key == "ephemeral_full_policy") {
+            if (cb::const_char_buffer(value) == "auto_delete") {
+                bucket.enableItemPager();
+            } else if (cb::const_char_buffer(value) == "fail_new_data") {
+                bucket.disableItemPager();
+            } else {
+                LOG(EXTENSION_LOG_WARNING,
+                    "EphemeralValueChangedListener: Invalid value '%s' for "
+                    "'ephemeral_full_policy - ignoring.",
+                    value);
+            }
+        } else {
+            LOG(EXTENSION_LOG_WARNING,
+                "EphemeralValueChangedListener: Failed to change value for "
+                "unknown key '%s'",
+                key.c_str());
+        }
+    }
+
+private:
+    EphemeralBucket& bucket;
+};
+
 EphemeralBucket::EphemeralBucket(EventuallyPersistentEngine& theEngine)
     : KVBucket(theEngine) {
     /* We always have VALUE_ONLY eviction policy because a key not
@@ -28,6 +65,22 @@ EphemeralBucket::EphemeralBucket(EventuallyPersistentEngine& theEngine)
        Note: This should not be confused with the eviction algorithm
              that we are going to use like NRU, FIFO etc. */
     eviction_policy = VALUE_ONLY;
+}
+
+bool EphemeralBucket::initialize() {
+    auto& config = engine.getConfiguration();
+
+    // Item pager - only scheduled if "auto_delete" is specified as the bucket
+    // full policy, but always add a value changed listener so we can handle
+    // dynamic config changes (and later schedule it).
+    itmpTask = new ItemPager(&engine, stats);
+    if (config.getEphemeralFullPolicy() == "auto_delete") {
+        enableItemPager();
+    }
+    engine.getConfiguration().addValueChangedListener(
+            "ephemeral_full_policy", new EphemeralValueChangedListener(*this));
+
+    return true;
 }
 
 RCPtr<VBucket> EphemeralBucket::makeVBucket(

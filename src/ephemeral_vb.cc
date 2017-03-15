@@ -71,6 +71,12 @@ void EphemeralVBucket::completeStatsVKey(
 
 bool EphemeralVBucket::htUnlockedEjectItem(const HashTable::HashBucketLock& lh,
                                            StoredValue*& v) {
+    // We only delete from active vBuckets to ensure that replicas stay in
+    // sync with the active (the delete from active is sent via DCP to the
+    // the replicas as an explicit delete).
+    if (getState() != vbucket_state_active) {
+        return false;
+    }
     VBQueueItemCtx queueCtx(GenerateBySeqno::Yes,
                             GenerateCas::Yes,
                             TrackCasDrift::No,
