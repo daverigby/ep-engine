@@ -242,6 +242,9 @@ TEST_P(STItemPagerTest, ExpiredItemsDeletedFirst) {
 class STEphemeralItemPagerTest : public STItemPagerTest {
 };
 
+extern "C" int je_mallctl(const char *name,
+    void *oldp, size_t *oldlenp, void *newp, size_t newlen);
+
 // For Ephemeral buckets, replica items should not be paged out (deleted) -
 // as that would cause the replica to have a diverging history from the active.
 TEST_P(STEphemeralItemPagerTest, ReplicaNotPaged) {
@@ -306,6 +309,11 @@ TEST_P(STEphemeralItemPagerTest, ReplicaNotPaged) {
 
     EXPECT_LT(store->getVBucket(active_vb)->getNumItems(), active_count)
         << "Active count should have decreased after Item Pager";
+
+    je_mallctl(nullptr, nullptr, nullptr, nullptr, 0);
+
+    store->getVBucket(active_vb)->dump();
+    store->getVBucket(replica_vb)->dump();
 }
 
 /**
