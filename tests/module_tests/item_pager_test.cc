@@ -256,9 +256,27 @@ TEST_P(STEphemeralItemPagerTest, ReplicaNotPaged) {
     ASSERT_LT(stats.getTotalMemoryUsed(), stats.mem_low_wat.load())
         << "Expected to start below low watermark";
 
-    // Populate vbid 1 (to be replica) until we reach the low watermark.
-    size_t replica_count = 0;
+    // Populate vbid 0 (active) until we reach the low watermark.
+    size_t active_count = 0;
     const std::string value(512, 'x'); // 512B value to use for documents.
+    do {
+        auto key = makeStoredDocKey("key_" + std::to_string(active_count));
+        auto item = make_item(active_vb, key, value);
+        // Set NRU of item to maximum; so will be a candidate for paging out
+        // straight away.
+        item.setNRUValue(MAX_NRU_VALUE);
+        uint64_t cas;
+        ASSERT_EQ(ENGINE_SUCCESS,
+                  engine->store(nullptr, &item, &cas, OPERATION_SET));
+        active_count++;
+    } while (stats.getTotalMemoryUsed() < stats.mem_low_wat.load());
+
+    ASSERT_GE(active_count, 10)
+            << "Expected at least 10 active items before hitting low watermark";
+
+    // Populate vbid 1 (replica) until we reach the high watermark.
+    size_t replica_count = 0;
+    ENGINE_ERROR_CODE result;
     do {
         auto key = makeStoredDocKey("key_" + std::to_string(replica_count));
         auto item = make_item(replica_vb, key, value);
@@ -266,31 +284,13 @@ TEST_P(STEphemeralItemPagerTest, ReplicaNotPaged) {
         // straight away (not that replica Items /should/ get paged out in
         // this test).
         item.setNRUValue(MAX_NRU_VALUE);
-        uint64_t cas;
-        ASSERT_EQ(ENGINE_SUCCESS,
-                  engine->store(nullptr, &item, &cas, OPERATION_SET));
-        replica_count++;
-    } while (stats.getTotalMemoryUsed() < stats.mem_low_wat.load());
-
-    ASSERT_GE(replica_count, 10)
-            << "Expected at least 10 items before hitting low watermark";
-
-    // Populate vbid 0 until we reach the high watermark.
-    size_t active_count = 0;
-    ENGINE_ERROR_CODE result;
-    for (result = ENGINE_SUCCESS; result == ENGINE_SUCCESS; active_count++) {
-        auto key = makeStoredDocKey("key_" + std::to_string(active_count));
-        auto item = make_item(active_vb, key, value);
-        // Set NRU of item to maximum; so will be a candidate for paging out
-        // straight away.
-        item.setNRUValue(MAX_NRU_VALUE);
 
         uint64_t cas;
         result = engine->store(nullptr, &item, &cas, OPERATION_SET);
-    }
+    } while (result == ENGINE_SUCCESS && ++replica_count);
     ASSERT_EQ(ENGINE_TMPFAIL, result);
-    ASSERT_GE(active_count, 10)
-        << "Expected at least 10 active items before hitting high watermark";
+    ASSERT_GE(replica_count, 10)
+        << "Expected at least 10 replica items before hitting high watermark";
 
     // Flip vb 1 to be a replica (and hence should not be a candidate for
     // any paging out.
