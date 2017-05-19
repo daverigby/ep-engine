@@ -94,6 +94,7 @@ public:
                        uint16_t vb, Callback<GetValue>& cb,
                        bool fetchDelete = false);
 
+    void getMulti(uint16_t vb, vb_bgfetch_queue_t &itms);
 
     /**
      * Overrides del().
@@ -256,6 +257,10 @@ private:
     leveldb::Slice mkValSlice(uint32_t, uint32_t, size_t s, const void *);
     void grokValSlice(const leveldb::Slice &, uint32_t *, uint32_t *,
                       size_t *, const char **);
+
+    GetValue makeGetValue(uint16_t vb,
+                          const DocKey& key,
+                          const std::string& value);
 
     leveldb::WriteBatch *batch;
 

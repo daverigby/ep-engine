@@ -74,34 +74,29 @@ void LevelDBKVStore::getWithHeader(void* handle, const DocKey& key,
         GetValue rv(NULL, ENGINE_KEY_ENOENT);
         cb.callback(rv);
     }
-
-    uint32_t flags, exp;
-    size_t sz;
-    const char *p;
-    leveldb::Slice sval(value);
-    grokValSlice(sval, &flags, &exp, &sz, &p);
-
-    uint8_t ext_meta[EXT_META_LEN];
-    if (checkUTF8JSON((const unsigned char *)p, sz)) {
-        ext_meta[0] = PROTOCOL_BINARY_DATATYPE_JSON;
-    } else {
-        ext_meta[0] = PROTOCOL_BINARY_RAW_BYTES;
-    }
-
-    GetValue rv(new Item(key,
-                         flags,
-                         exp,
-                         p,
-                         sz,
-                         ext_meta,
-                         EXT_META_LEN,
-                         0, // CAS
-                         // TODO vmx 2016-10-29: put in real sequence number
-                         1, // seqnum
-                         vb
-                         ),
-                ENGINE_SUCCESS, -1, 0);
+    GetValue rv = makeGetValue(vb, key, value);
     cb.callback(rv);
+}
+
+// PERF: LevelDB doesn't support multi-get (rocks does), so we just emulate
+// with individual Get() calls.
+void LevelDBKVStore::getMulti(uint16_t vb, vb_bgfetch_queue_t &itms) {
+    for (auto& it : itms) {
+        auto& key = it.first;
+        leveldb::Slice vbAndKey(mkKeySlice(vb, it.first));
+        std::string value;
+        leveldb::Status s = db->Get(leveldb::ReadOptions(), vbAndKey, &value);
+        if (s.ok()) {
+            GetValue rv = makeGetValue(vb, key, value);
+            for (auto& fetch : it.second.bgfetched_list) {
+                fetch->value = rv;
+            }
+        } else {
+            for (auto& fetch : it.second.bgfetched_list) {
+                fetch->value.setStatus(ENGINE_KEY_ENOENT);
+            }
+        }
+    }
 }
 
 void LevelDBKVStore::reset(uint16_t vbucketId) {
@@ -190,6 +185,38 @@ void LevelDBKVStore::grokValSlice(const leveldb::Slice &s, uint32_t *f, uint32_t
     *p = s.data() + sizeof(*f) + sizeof(*e);
 }
 
+GetValue LevelDBKVStore::makeGetValue(uint16_t vb,
+                                      const DocKey& key,
+                                      const std::string& value) {
+    uint32_t flags, exp;
+    size_t sz;
+    const char *p;
+    leveldb::Slice sval(value);
+    grokValSlice(sval, &flags, &exp, &sz, &p);
+
+    uint8_t ext_meta[EXT_META_LEN];
+    if (checkUTF8JSON((const unsigned char *)p, sz)) {
+        ext_meta[0] = PROTOCOL_BINARY_DATATYPE_JSON;
+    } else {
+        ext_meta[0] = PROTOCOL_BINARY_RAW_BYTES;
+    }
+
+    // TODO vmx 2016-10-29: put in real sequence number
+    uint64_t seqno = 1;
+    return GetValue(new Item(key,
+                             flags,
+                             exp,
+                             p,
+                             sz,
+                             ext_meta,
+                             EXT_META_LEN,
+                             0, // CAS
+                             seqno,
+                             vb),
+                    ENGINE_SUCCESS,
+                    -1,
+                    0);
+}
 
 ScanContext* LevelDBKVStore::initScanContext(
     std::shared_ptr<Callback<GetValue> > cb,
