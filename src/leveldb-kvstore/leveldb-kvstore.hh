@@ -240,8 +240,15 @@ private:
     void open() {
         leveldb::Options options;
         options.create_if_missing = true;
-        leveldb::Status s = leveldb::DB::Open(options, "/tmp/testdb", &db);
-        assert(s.ok());
+        const std::string dbname = configuration.getDBName() + "." +
+                             std::to_string(configuration.getShardId());
+
+        leveldb::Status s = leveldb::DB::Open(options, dbname, &db);
+        if (!s.ok()) {
+            throw std::runtime_error(
+                    "LevelDBKVStore::open: failed to open database '" + dbname +
+                    "': " + s.ToString());
+        }
     }
 
     void close() {
