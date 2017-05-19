@@ -7,7 +7,6 @@
 #include <cstdlib>
 #include <stdio.h>
 #include <string.h>
-#include "util/logging.h"
 
 namespace leveldb {
 namespace port {
@@ -44,6 +43,10 @@ void CondVar::Signal() {
 
 void CondVar::SignalAll() {
   PthreadCall("broadcast", pthread_cond_broadcast(&cv_));
+}
+
+void InitOnce(OnceType* once, void (*initializer)()) {
+  PthreadCall("once", pthread_once(once, initializer));
 }
 
 }  // namespace port

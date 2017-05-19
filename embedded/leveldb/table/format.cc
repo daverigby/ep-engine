@@ -30,15 +30,14 @@ Status BlockHandle::DecodeFrom(Slice* input) {
 }
 
 void Footer::EncodeTo(std::string* dst) const {
-#ifndef NDEBUG
   const size_t original_size = dst->size();
-#endif
   metaindex_handle_.EncodeTo(dst);
   index_handle_.EncodeTo(dst);
   dst->resize(2 * BlockHandle::kMaxEncodedLength);  // Padding
   PutFixed32(dst, static_cast<uint32_t>(kTableMagicNumber & 0xffffffffu));
   PutFixed32(dst, static_cast<uint32_t>(kTableMagicNumber >> 32));
   assert(dst->size() == original_size + kEncodedLength);
+  (void)original_size;  // Disable unused variable warning.
 }
 
 Status Footer::DecodeFrom(Slice* input) {
@@ -48,7 +47,7 @@ Status Footer::DecodeFrom(Slice* input) {
   const uint64_t magic = ((static_cast<uint64_t>(magic_hi) << 32) |
                           (static_cast<uint64_t>(magic_lo)));
   if (magic != kTableMagicNumber) {
-    return Status::InvalidArgument("not an sstable (bad magic number)");
+    return Status::Corruption("not an sstable (bad magic number)");
   }
 
   Status result = metaindex_handle_.DecodeFrom(input);
@@ -66,8 +65,10 @@ Status Footer::DecodeFrom(Slice* input) {
 Status ReadBlock(RandomAccessFile* file,
                  const ReadOptions& options,
                  const BlockHandle& handle,
-                 Block** block) {
-  *block = NULL;
+                 BlockContents* result) {
+  result->data = Slice();
+  result->cachable = false;
+  result->heap_allocated = false;
 
   // Read the block contents as well as the type/crc footer.
   // See table_builder.cc for the code that built this structure.
@@ -100,8 +101,16 @@ Status ReadBlock(RandomAccessFile* file,
     case kNoCompression:
       if (data != buf) {
         // File implementation gave us pointer to some other data.
-        // Copy into buf[].
-        memcpy(buf, data, n + kBlockTrailerSize);
+        // Use it directly under the assumption that it will be live
+        // while the file is open.
+        delete[] buf;
+        result->data = Slice(data, n);
+        result->heap_allocated = false;
+        result->cachable = false;  // Do not double-cache
+      } else {
+        result->data = Slice(buf, n);
+        result->heap_allocated = true;
+        result->cachable = true;
       }
 
       // Ok
@@ -119,8 +128,9 @@ Status ReadBlock(RandomAccessFile* file,
         return Status::Corruption("corrupted compressed block contents");
       }
       delete[] buf;
-      buf = ubuf;
-      n = ulength;
+      result->data = Slice(ubuf, ulength);
+      result->heap_allocated = true;
+      result->cachable = true;
       break;
     }
     default:
@@ -128,7 +138,6 @@ Status ReadBlock(RandomAccessFile* file,
       return Status::Corruption("bad block type");
   }
 
-  *block = new Block(buf, n);  // Block takes ownership of buf[]
   return Status::OK();
 }
 
