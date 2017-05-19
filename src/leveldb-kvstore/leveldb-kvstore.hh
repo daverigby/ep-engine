@@ -7,10 +7,11 @@
 
 #include <kvstore.h>
 
-#include <leveldb/db.h>
-#include <leveldb/slice.h>
-#include <leveldb/write_batch.h>
+#include <string>
+#include <rocksdb/db.h>
+#include <rocksdb/utilities/leveldb_options.h>
 
+#define LEVELDB rocksdb
 
 /**
  * A persistence store based on leveldb.
@@ -44,7 +45,7 @@ public:
      */
     bool begin() {
         if(!batch) {
-            batch = new leveldb::WriteBatch;
+            batch = new LEVELDB::WriteBatch;
         }
         return batch != NULL;
     }
@@ -56,7 +57,7 @@ public:
      */
     bool commit(const Item* collectionsManifest) {
         if(batch) {
-            leveldb::Status s = db->Write(leveldb::WriteOptions(), batch);
+            LEVELDB::Status s = db->Write(LEVELDB::WriteOptions(), batch);
             if (s.ok()) {
                 delete batch;
                 batch = NULL;
@@ -232,18 +233,18 @@ private:
     /**
      * Direct access to the DB.
      */
-    leveldb::DB* db;
+    LEVELDB::DB* db;
     char *keyBuffer;
     char *valBuffer;
     size_t valSize;
 
     void open() {
-        leveldb::Options options;
+        LEVELDB::Options options;
         options.create_if_missing = true;
         const std::string dbname = configuration.getDBName() + "." +
                              std::to_string(configuration.getShardId());
 
-        leveldb::Status s = leveldb::DB::Open(options, dbname, &db);
+        LEVELDB::Status s = LEVELDB::DB::Open(options, dbname, &db);
         if (!s.ok()) {
             throw std::runtime_error(
                     "LevelDBKVStore::open: failed to open database '" + dbname +
@@ -256,19 +257,19 @@ private:
         db = NULL;
     }
 
-    leveldb::Slice mkKeySlice(uint16_t, const DocKey& k);
-    void grokKeySlice(const leveldb::Slice &, uint16_t *, std::string *);
+    LEVELDB::Slice mkKeySlice(uint16_t, const DocKey& k);
+    void grokKeySlice(const LEVELDB::Slice &, uint16_t *, std::string *);
 
     void adjustValBuffer(const size_t);
 
-    leveldb::Slice mkValSlice(const Item& item);
-    Item* grokValSlice(uint16_t vb, const DocKey& key, const leveldb::Slice& s);
+    LEVELDB::Slice mkValSlice(const Item& item);
+    Item* grokValSlice(uint16_t vb, const DocKey& key, const LEVELDB::Slice& s);
 
     GetValue makeGetValue(uint16_t vb,
                           const DocKey& key,
                           const std::string& value);
 
-    leveldb::WriteBatch *batch;
+    LEVELDB::WriteBatch *batch;
 
     // Disallow assignment.
     void operator=(LevelDBKVStore &from);

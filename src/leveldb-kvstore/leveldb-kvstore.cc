@@ -10,6 +10,8 @@
 #include "leveldb-kvstore.hh"
 #include "vbucket.h"
 
+#define LEVELDB rocksdb
+
 static const size_t DEFAULT_VAL_SIZE(64 * 1024);
 
 LevelDBKVStore::LevelDBKVStore(KVStoreConfig &config)
@@ -49,8 +51,8 @@ std::vector<vbucket_state *> LevelDBKVStore::listPersistedVbuckets() {
 
 void LevelDBKVStore::set(const Item &itm, Callback<mutation_result> &cb) {
     // TODO-PERF: See if slices can be setup without copying.
-    leveldb::Slice k(mkKeySlice(itm.getVBucketId(), itm.getKey()));
-    leveldb::Slice v(mkValSlice(itm));
+    LEVELDB::Slice k(mkKeySlice(itm.getVBucketId(), itm.getKey()));
+    LEVELDB::Slice v(mkValSlice(itm));
     batch->Put(k, v);
     std::pair<int, bool> p(1, true);
     cb.callback(p);
@@ -66,9 +68,9 @@ void LevelDBKVStore::get(const DocKey& key, uint16_t vb,
 void LevelDBKVStore::getWithHeader(void* handle, const DocKey& key,
                                   uint16_t vb, Callback<GetValue>& cb,
                                   bool fetchDelete) {
-    leveldb::Slice k(mkKeySlice(vb, key));
+    LEVELDB::Slice k(mkKeySlice(vb, key));
     std::string value;
-    leveldb::Status s = db->Get(leveldb::ReadOptions(), k, &value);
+    LEVELDB::Status s = db->Get(LEVELDB::ReadOptions(), k, &value);
     if (!s.ok()) {
         GetValue rv(NULL, ENGINE_KEY_ENOENT);
         cb.callback(rv);
@@ -82,9 +84,9 @@ void LevelDBKVStore::getWithHeader(void* handle, const DocKey& key,
 void LevelDBKVStore::getMulti(uint16_t vb, vb_bgfetch_queue_t &itms) {
     for (auto& it : itms) {
         auto& key = it.first;
-        leveldb::Slice vbAndKey(mkKeySlice(vb, it.first));
+        LEVELDB::Slice vbAndKey(mkKeySlice(vb, it.first));
         std::string value;
-        leveldb::Status s = db->Get(leveldb::ReadOptions(), vbAndKey, &value);
+        LEVELDB::Status s = db->Get(LEVELDB::ReadOptions(), vbAndKey, &value);
         if (s.ok()) {
             GetValue rv = makeGetValue(vb, key, value);
             for (auto& fetch : it.second.bgfetched_list) {
@@ -105,18 +107,18 @@ void LevelDBKVStore::reset(uint16_t vbucketId) {
 }
 
 void LevelDBKVStore::del(const Item &itm, Callback<int> &cb) {
-    leveldb::Slice k(mkKeySlice(itm.getVBucketId(), itm.getKey()));
+    LEVELDB::Slice k(mkKeySlice(itm.getVBucketId(), itm.getKey()));
     batch->Delete(k);
     int rv(1);
     cb.callback(rv);
 }
 
-static bool matches_prefix(leveldb::Slice s, size_t len, const char *p) {
+static bool matches_prefix(LEVELDB::Slice s, size_t len, const char *p) {
     return s.size() >= len && std::memcmp(p, s.data(), len) == 0;
 }
 
 void LevelDBKVStore::delVBucket(uint16_t vb, uint64_t vb_version) {
-    leveldb::Iterator* it = db->NewIterator(leveldb::ReadOptions());
+    LEVELDB::Iterator* it = db->NewIterator(LEVELDB::ReadOptions());
     const char *prefix(reinterpret_cast<const char*>(&vb));
     std::string start(prefix, sizeof(vb));
     begin();
@@ -153,19 +155,19 @@ StorageProperties LevelDBKVStore::getStorageProperties(void) {
     return rv;
 }
 
-leveldb::Slice LevelDBKVStore::mkKeySlice(uint16_t vbid, const DocKey& k) {
+LEVELDB::Slice LevelDBKVStore::mkKeySlice(uint16_t vbid, const DocKey& k) {
     std::memcpy(keyBuffer, &vbid, sizeof(vbid));
     std::memcpy(keyBuffer + sizeof(vbid), k.data(), k.size());
-    return leveldb::Slice(keyBuffer, sizeof(vbid) + k.size());
+    return LEVELDB::Slice(keyBuffer, sizeof(vbid) + k.size());
 }
 
-void LevelDBKVStore::grokKeySlice(const leveldb::Slice &s, uint16_t *v, std::string *k) {
+void LevelDBKVStore::grokKeySlice(const LEVELDB::Slice &s, uint16_t *v, std::string *k) {
     assert(s.size() > sizeof(uint16_t));
     std::memcpy(v, s.data(), sizeof(uint16_t));
     k->assign(s.data() + sizeof(uint16_t), s.size() - sizeof(uint16_t));
 }
 
-leveldb::Slice LevelDBKVStore::mkValSlice(const Item& item) {
+LEVELDB::Slice LevelDBKVStore::mkValSlice(const Item& item) {
     // Serialize an Item to the format to write to LevelDB.
     // Using the following layout:
     //    uint64_t           cas          ]
@@ -196,12 +198,12 @@ leveldb::Slice LevelDBKVStore::mkValSlice(const Item& item) {
     std::memcpy(dest, item.getValue()->getData(), valueLen);
     dest += valueLen;
 
-    return leveldb::Slice(valBuffer, dest - valBuffer);
+    return LEVELDB::Slice(valBuffer, dest - valBuffer);
 }
 
 Item* LevelDBKVStore::grokValSlice(uint16_t vb,
                                   const DocKey& key,
-                                  const leveldb::Slice& s) {
+                                  const LEVELDB::Slice& s) {
     // Reverse of mkValSlice - deserialize back into an Item.
 
     assert(s.size() >= sizeof(ItemMetaData) + sizeof(uint64_t) +
@@ -243,7 +245,7 @@ Item* LevelDBKVStore::grokValSlice(uint16_t vb,
 GetValue LevelDBKVStore::makeGetValue(uint16_t vb,
                                       const DocKey& key,
                                       const std::string& value) {
-    leveldb::Slice sval(value);
+    LEVELDB::Slice sval(value);
     return GetValue(grokValSlice(vb, key, sval), ENGINE_SUCCESS, -1, 0);
 }
 

@@ -29,10 +29,11 @@ INCLUDE_DIRECTORIES(BEFORE ${CMAKE_INSTALL_PREFIX}/include
                            ${Memcached_SOURCE_DIR}/include
                            ${Couchstore_SOURCE_DIR}/include
                            ${phosphor_SOURCE_DIR}/include
-                           ${CMAKE_CURRENT_SOURCE_DIR}/embedded/leveldb/include
                            ${CMAKE_CURRENT_BINARY_DIR})
 
-INCLUDE_DIRECTORIES(AFTER ${Memcached_BINARY_DIR}/include)
+INCLUDE_DIRECTORIES(AFTER ${Memcached_BINARY_DIR}/include
+                           /usr/local/include/)
+
 
 IF (EP_USE_FORESTDB)
     INCLUDE_DIRECTORIES(AFTER ${ForestDB_SOURCE_DIR}/include)
@@ -185,7 +186,7 @@ SET(LEVELDB_SOURCE
        embedded/leveldb/util/logging.cc
        embedded/leveldb/util/options.cc
        embedded/leveldb/util/status.cc)
-SET(LEVELDB_STATIC_LIB ${CMAKE_CURRENT_SOURCE_DIR}/embedded/leveldb/out-static/libleveldb.a)
+SET(LEVELDB_STATIC_LIB /usr/local/Cellar/rocksdb/5.3.4/lib/librocksdb.5.3.4.dylib)
 
 SET(OBJECTREGISTRY_SOURCE src/objectregistry.cc)
 SET(CONFIG_SOURCE src/configuration.cc
