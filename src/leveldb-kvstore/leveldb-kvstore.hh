@@ -54,7 +54,7 @@ public:
      *
      * Returns false if the commit fails.
      */
-    bool commit() {
+    bool commit(const Item* collectionsManifest) {
         if(batch) {
             leveldb::Status s = db->Write(leveldb::WriteOptions(), batch);
             if (s.ok()) {
@@ -87,10 +87,10 @@ public:
     /**
      * Overrides get().
      */
-    void get(const std::string &key, uint16_t vb, Callback<GetValue> &cb,
+    void get(const DocKey& key, uint16_t vb, Callback<GetValue> &cb,
              bool fetchDelete = false);
 
-    void getWithHeader(void* handle, const std::string& key,
+    void getWithHeader(void* handle, const DocKey& key,
                        uint16_t vb, Callback<GetValue>& cb,
                        bool fetchDelete = false);
 
@@ -100,10 +100,7 @@ public:
      */
     void del(const Item &itm, Callback<int> &cb);
 
-    bool delVBucket(uint16_t vbucket);
-
-    bool delVBucket(uint16_t vbucket, uint16_t vb_version,
-                    std::pair<int64_t, int64_t> row_range);
+    void delVBucket(uint16_t vbucket, uint64_t vb_version);
 
     std::vector<vbucket_state *> listPersistedVbuckets(void);
 
@@ -114,7 +111,7 @@ public:
     /**
      * Take a snapshot of the vbucket states in the main DB.
      */
-    bool snapshotVBucket(uint16_t vbucketId, vbucket_state &vbstate,
+    bool snapshotVBucket(uint16_t vbucketId, const vbucket_state &vbstate,
                          VBStatePersist options);
 
     void destroyInvalidVBuckets(bool);
@@ -185,9 +182,9 @@ public:
         // NOTE vmx 2016-10-29: Intentionally left empty;
     }
 
-    ENGINE_ERROR_CODE getAllKeys(uint16_t vbid, std::string &start_key,
+    ENGINE_ERROR_CODE getAllKeys(uint16_t vbid, const DocKey start_key,
                                  uint32_t count,
-                                 std::shared_ptr<Callback<uint16_t&, char*&> > cb) {
+                                 std::shared_ptr<Callback<const DocKey&>> cb) {
         // TODO vmx 2016-10-29: implement
         return ENGINE_SUCCESS;
     }
@@ -207,6 +204,27 @@ public:
         // TODO vmx 2016-10-29: implement
         delete ctx;
     }
+
+    bool persistCollectionsManifestItem(uint16_t vbid,
+                                        const Item& manifestItem) {
+        // TODO DJR 2017-05-19 implement this.
+        return false;
+    }
+
+    std::string getCollectionsManifest(uint16_t vbid) {
+        // TODO DJR 2017-05-19 implement this.
+        return "";
+    }
+
+    void incrementRevision(uint16_t vbid) {
+        // TODO DJR 2017-05-19 implement this.
+    }
+
+    uint64_t prepareToDelete(uint16_t vbid) {
+        // TODO DJR 2017-05-19 implement this.
+        return 0;
+    }
+
 
 private:
 
@@ -230,7 +248,7 @@ private:
         db = NULL;
     }
 
-    leveldb::Slice mkKeySlice(uint16_t, const std::string &);
+    leveldb::Slice mkKeySlice(uint16_t, const DocKey& k);
     void grokKeySlice(const leveldb::Slice &, uint16_t *, std::string *);
 
     void adjustValBuffer(const size_t);
