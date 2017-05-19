@@ -261,9 +261,8 @@ private:
 
     void adjustValBuffer(const size_t);
 
-    leveldb::Slice mkValSlice(uint32_t, uint32_t, size_t s, const void *);
-    void grokValSlice(const leveldb::Slice &, uint32_t *, uint32_t *,
-                      size_t *, const char **);
+    leveldb::Slice mkValSlice(const Item& item);
+    Item* grokValSlice(uint16_t vb, const DocKey& key, const leveldb::Slice& s);
 
     GetValue makeGetValue(uint16_t vb,
                           const DocKey& key,

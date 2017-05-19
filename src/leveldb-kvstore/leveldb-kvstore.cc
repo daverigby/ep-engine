@@ -50,8 +50,7 @@ std::vector<vbucket_state *> LevelDBKVStore::listPersistedVbuckets() {
 void LevelDBKVStore::set(const Item &itm, Callback<mutation_result> &cb) {
     // TODO-PERF: See if slices can be setup without copying.
     leveldb::Slice k(mkKeySlice(itm.getVBucketId(), itm.getKey()));
-    leveldb::Slice v(mkValSlice(itm.getFlags(), itm.getExptime(),
-                                itm.getNBytes(), itm.getData()));
+    leveldb::Slice v(mkValSlice(itm));
     batch->Put(k, v);
     std::pair<int, bool> p(1, true);
     cb.callback(p);
@@ -166,56 +165,86 @@ void LevelDBKVStore::grokKeySlice(const leveldb::Slice &s, uint16_t *v, std::str
     k->assign(s.data() + sizeof(uint16_t), s.size() - sizeof(uint16_t));
 }
 
-leveldb::Slice LevelDBKVStore::mkValSlice(uint32_t flags, uint32_t exp,
-                                          size_t n, const void *p) {
-    adjustValBuffer(n);
-    std::memcpy(valBuffer, &flags, sizeof(flags));
-    std::memcpy(valBuffer + sizeof(flags), &exp, sizeof(exp));
-    std::memcpy(valBuffer + sizeof(flags) + sizeof(exp), p, n);
-    return leveldb::Slice(valBuffer, sizeof(flags) + sizeof(exp) + n);
+leveldb::Slice LevelDBKVStore::mkValSlice(const Item& item) {
+    // Serialize an Item to the format to write to LevelDB.
+    // Using the following layout:
+    //    uint64_t           cas          ]
+    //    uint64_t           revSeqno     ] ItemMetaData
+    //    uint32_t           flags        ]
+    //    uint32_t           exptime      ]
+    //    uint64_t           bySeqno
+    //    uint8_t            datatype
+    //    uint32_t           value_len
+    //    uint8_t[value_len] value
+    //
+    adjustValBuffer(item.size());
+    char* dest = valBuffer;
+    std::memcpy(dest, &item.getMetaData(), sizeof(ItemMetaData));
+    dest += sizeof(ItemMetaData);
+
+    const int64_t bySeqno{item.getBySeqno()};
+    std::memcpy(dest, &bySeqno, sizeof(bySeqno));
+    dest += sizeof(uint64_t);
+
+    const uint8_t datatype{item.getDataType()};
+    std::memcpy(dest, &datatype, sizeof(datatype));
+    dest += sizeof(uint8_t);
+
+    const uint32_t valueLen = item.getNBytes();
+    std::memcpy(dest, &valueLen, sizeof(valueLen));
+    dest += sizeof(valueLen);
+    std::memcpy(dest, item.getValue()->getData(), valueLen);
+    dest += valueLen;
+
+    return leveldb::Slice(valBuffer, dest - valBuffer);
 }
 
-void LevelDBKVStore::grokValSlice(const leveldb::Slice &s, uint32_t *f, uint32_t *e,
-                                  size_t *sz, const char **p) {
-    assert(s.size() >= 2 * sizeof(uint32_t));
-    std::memcpy(f, s.data(), sizeof(*f));
-    std::memcpy(e, s.data() + sizeof(*f), sizeof(*f));
-    size_t data_size(s.size() - (sizeof(*f) + sizeof(*e)));
-    std::memcpy(sz, &data_size, sizeof(*sz));
-    *p = s.data() + sizeof(*f) + sizeof(*e);
+Item* LevelDBKVStore::grokValSlice(uint16_t vb,
+                                  const DocKey& key,
+                                  const leveldb::Slice& s) {
+    // Reverse of mkValSlice - deserialize back into an Item.
+
+    assert(s.size() >= sizeof(ItemMetaData) + sizeof(uint64_t) +
+                               sizeof(uint8_t) + sizeof(uint32_t));
+
+    ItemMetaData meta;
+    const char* src = s.data();
+    std::memcpy(&meta, src, sizeof(meta));
+    src += sizeof(meta);
+
+    int64_t bySeqno;
+    std::memcpy(&bySeqno, src, sizeof(bySeqno));
+    src += sizeof(bySeqno);
+
+    uint8_t datatype;
+    std::memcpy(&datatype, src, sizeof(datatype));
+    src += sizeof(datatype);
+
+    uint32_t valueLen;
+    std::memcpy(&valueLen, src, sizeof(valueLen));
+    src += sizeof(valueLen);
+
+    uint8_t extMeta[EXT_META_LEN];
+    extMeta[0] = datatype;
+
+    return new Item(key,
+                meta.flags,
+                meta.exptime,
+                src,
+                valueLen,
+                extMeta,
+                EXT_META_LEN,
+                meta.cas,
+                bySeqno,
+                vb,
+                meta.revSeqno);
 }
 
 GetValue LevelDBKVStore::makeGetValue(uint16_t vb,
                                       const DocKey& key,
                                       const std::string& value) {
-    uint32_t flags, exp;
-    size_t sz;
-    const char *p;
     leveldb::Slice sval(value);
-    grokValSlice(sval, &flags, &exp, &sz, &p);
-
-    uint8_t ext_meta[EXT_META_LEN];
-    if (checkUTF8JSON((const unsigned char *)p, sz)) {
-        ext_meta[0] = PROTOCOL_BINARY_DATATYPE_JSON;
-    } else {
-        ext_meta[0] = PROTOCOL_BINARY_RAW_BYTES;
-    }
-
-    // TODO vmx 2016-10-29: put in real sequence number
-    uint64_t seqno = 1;
-    return GetValue(new Item(key,
-                             flags,
-                             exp,
-                             p,
-                             sz,
-                             ext_meta,
-                             EXT_META_LEN,
-                             0, // CAS
-                             seqno,
-                             vb),
-                    ENGINE_SUCCESS,
-                    -1,
-                    0);
+    return GetValue(grokValSlice(vb, key, sval), ENGINE_SUCCESS, -1, 0);
 }
 
 ScanContext* LevelDBKVStore::initScanContext(
