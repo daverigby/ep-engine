@@ -185,7 +185,7 @@ SET(LEVELDB_SOURCE
        embedded/leveldb/util/logging.cc
        embedded/leveldb/util/options.cc
        embedded/leveldb/util/status.cc)
-SET(LEVELDB_STATIC_LIB ${CMAKE_CURRENT_SOURCE_DIR}/embedded/leveldb/libleveldb.a)
+SET(LEVELDB_STATIC_LIB ${CMAKE_CURRENT_SOURCE_DIR}/embedded/leveldb/out-static/libleveldb.a)
 
 SET(OBJECTREGISTRY_SOURCE src/objectregistry.cc)
 SET(CONFIG_SOURCE src/configuration.cc
